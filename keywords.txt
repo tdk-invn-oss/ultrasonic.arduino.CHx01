@@ -1,0 +1,8 @@
+CH101	KEYWORD1
+CH201	KEYWORD1
+begin	KEYWORD2
+free_run	KEYWORD2
+data_ready	KEYWORD2
+get_iq_data	KEYWORD2
+get_range	KEYWORD2
+ch_iq_sample_t		KEYWORD2
