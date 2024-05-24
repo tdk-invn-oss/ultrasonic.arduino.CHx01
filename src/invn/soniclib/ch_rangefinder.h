@@ -1,3 +1,23 @@
+/*! \file ch_rangefinder.h
+ *
+ * \brief Internal driver functions for operation with the Chirp ultrasonic sensor.
+ *
+ * This file contains range finding routines.
+ *
+ * You should not need to edit this file or call the driver functions directly.  Doing so
+ * will reduce your ability to benefit from future enhancements and releases from Chirp.
+ *
+ */
+
+/*
+ Copyright 2016-2024, InvenSense, Inc.  All rights reserved.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.
+
+ */
 #ifndef CH_RANGEFINDER_H_
 #define CH_RANGEFINDER_H_
 

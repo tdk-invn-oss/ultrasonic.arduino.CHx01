@@ -35,12 +35,10 @@ static const ch_rangefinder_api_funcs_t algo_api_funcs = {
 
 static const ch_api_funcs_t api_funcs = {
 		.set_num_samples    = ch_common_set_num_samples,
-		.set_max_range      = ch_common_set_max_range,
 		.get_range          = ch_rangefinder_get_range,
 		.get_amplitude      = ch_rangefinder_get_amplitude,
 		.get_iq_data        = ch_common_get_iq_data,
 		.get_amplitude_data = ch_common_get_amplitude_data,
-		.samples_to_mm      = ch_common_samples_to_mm,
 		.mm_to_samples      = ch_common_mm_to_samples,
 		.set_sample_window  = ch_common_set_sample_window,
 		.get_amplitude_avg  = ch_common_get_amplitude_avg,
@@ -48,7 +46,6 @@ static const ch_api_funcs_t api_funcs = {
 		.get_rx_low_gain    = ch_common_get_rx_low_gain,
 		.set_tx_length      = NULL,  // not supported
 		.get_tx_length      = ch_common_get_tx_length,
-		.meas_get_iq_output = NULL,
 		.algo_specific_api  = &algo_api_funcs,
 };
 

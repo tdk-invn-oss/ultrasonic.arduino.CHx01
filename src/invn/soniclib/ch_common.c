@@ -20,6 +20,9 @@
 
  */
 
+#define CH_LOG_MODULE_NAME "CH_COMMON"
+#include <invn/soniclib/ch_log.h>
+
 #include <invn/soniclib/soniclib.h>
 #include <invn/soniclib/chirp_bsp.h>
 #include <invn/soniclib/details/ch_common.h>
@@ -29,6 +32,10 @@
 #ifdef INCLUDE_SHASTA_SUPPORT
 #include <invn/icu_interface/shasta_pmut_cmds.h>
 #include <invn/soniclib/details/ch_asic_shasta.h>
+#endif
+
+#ifdef INCLUDE_WHITNEY_SUPPORT
+#include <invn/soniclib/details/ch_asic_whitney.h>
 #endif
 
 /* Local definitions */
@@ -480,11 +487,9 @@ static uint8_t set_interval_ticks(ch_dev_t *dev_ptr, uint32_t rtc_ticks, uint8_t
 		ret_val = chdrv_read_word(dev_ptr, tick_interval_reg, &current_tick_interval);
 		if (!ret_val) {
 			tick_interval = update_rtc_measure_period(current_tick_interval, tick_interval);
-#ifdef CHDRV_DEBUG
-			char cbuf[80];
-			snprintf(cbuf, sizeof(cbuf), "Set period=%lu, tick_interval=%lu\n", period, tick_interval);
-			chbsp_print_str(cbuf);
-#endif
+
+			CH_LOG_INFO("Set period=%lu, tick_interval=%lu", period, tick_interval);
+
 			ret_val  = chdrv_write_byte(dev_ptr, period_reg, (uint8_t)period);
 			ret_val |= chdrv_write_word(dev_ptr, tick_interval_reg, (uint16_t)tick_interval);
 		}
@@ -566,29 +571,23 @@ uint8_t ch_common_set_max_range(ch_dev_t *dev_ptr, uint16_t max_range_mm) {
 	ret_val = (!dev_ptr->sensor_connected);
 
 	if (!ret_val) {
-		num_samples = dev_ptr->current_fw->api_funcs->mm_to_samples(dev_ptr, max_range_mm);
+		num_samples = ch_common_mm_to_samples(dev_ptr, max_range_mm);
 
 		if (num_samples > dev_ptr->current_fw->max_samples) {
 			num_samples        = dev_ptr->current_fw->max_samples;
-			dev_ptr->max_range = ch_samples_to_mm(dev_ptr, num_samples);  // store reduced max range
+			dev_ptr->max_range = ch_common_samples_to_mm(dev_ptr, num_samples);  // store reduced max range
 		} else {
 			dev_ptr->max_range = max_range_mm;  // store user-specified max range
 		}
 
-#ifdef CHDRV_DEBUG
-		char cbuf[80];
-		snprintf(cbuf, sizeof(cbuf), "num_samples=%lu\n", num_samples);
-		chbsp_print_str(cbuf);
-#endif
+		CH_LOG_DEBUG("num_samples=%lu", num_samples);
 	}
 
 	if (!ret_val) {
 		ret_val = ch_set_num_samples(dev_ptr, num_samples);
 	}
 
-#ifdef CHDRV_DEBUG
-	printf("Set samples: ret_val: %u  dev_ptr->num_rx_samples: %u\n", ret_val, dev_ptr->num_rx_samples);
-#endif
+	CH_LOG_INFO("Set samples: ret_val: %u  dev_ptr->num_rx_samples: %u", ret_val, dev_ptr->num_rx_samples);
 
 #endif  // INCLUDE_SHASTA_SUPPORT
 	return ret_val;
@@ -684,18 +683,18 @@ uint32_t ch_common_range_lsb_to_mm(const ch_dev_t *dev_ptr, uint32_t time_of_fli
 	uint32_t rtc_cal_pulse_ms = (uint32_t)dev_ptr->group->rtc_cal_pulse_ms;
 
 	uint32_t num = (CH_SPEEDOFSOUND_MPS * ((rtc_cal_pulse_ms * time_of_flight * (uint32_t)dev_ptr->fcount_cycles) >>
-	                                       (2 + odr))  // bitshift down by 10 to handle overflo;
+	                                       (2 + odr))  // bitshift down by 10 to handle overflow;
 	);
 	// this one can't overflow, bitshift down by 10 to match num
 	uint32_t den = ((uint32_t)dev_ptr->rtc_cal_result * (uint32_t)dev_ptr->pmut_clock_fcount) >> 11;
 
 	range = (num / den);
-#ifdef CHDRV_DEBUG  // formula debug
-	printf("num = (%u * ((%lu * %lu * %lu) >> (2 + %lu)))) = %lu\n", CH_SPEEDOFSOUND_MPS, rtc_cal_pulse_ms,
-	       time_of_flight, (uint32_t)dev_ptr->fcount_cycles, odr, num);
-	printf("den = ((%u * %u) >> 11) = %lu\n", dev_ptr->rtc_cal_result, dev_ptr->pmut_clock_fcount, den);
-	printf("range = %lu   num = %lu   den = %lu\n", range, num, den);
-#endif
+
+	// formula debug
+	CH_LOG_DEBUG("num = (%u * ((%lu * %lu * %lu) >> (2 + %lu)))) = %lu", CH_SPEEDOFSOUND_MPS, rtc_cal_pulse_ms,
+	             time_of_flight, (uint32_t)dev_ptr->fcount_cycles, odr, num);
+	CH_LOG_DEBUG("den = ((%u * %u) >> 11) = %lu", dev_ptr->rtc_cal_result, dev_ptr->pmut_clock_fcount, den);
+	CH_LOG_DEBUG("range = %lu   num = %lu   den = %lu", range, num, den);
 
 #elif defined(INCLUDE_WHITNEY_SUPPORT)
 	uint16_t scale_factor   = dev_ptr->tof_scale_factor;
@@ -715,9 +714,10 @@ uint32_t ch_common_range_lsb_to_mm(const ch_dev_t *dev_ptr, uint32_t time_of_fli
 	// If rx-only node, adjust for pre-trigger time included in ToF
 	if (dev_ptr->mode == CH_MODE_TRIGGERED_RX_ONLY) {
 		uint32_t pretrig_adj = (CH_SPEEDOFSOUND_MPS * dev_ptr->group->pretrig_delay_us * 32) / 1000;
-#ifdef CHDRV_DEBUG  // formula debug
-		printf("pre-trig adjust = %lu:  range before = %lu  ", pretrig_adj, range);
-#endif
+
+		// formula debug
+		CH_LOG_DEBUG_START("pre-trig adjust = %lu:  range before = %lu  ", pretrig_adj, range);
+
 		if (range > pretrig_adj) {
 			// subtract adjustment from calculated range
 			range -= pretrig_adj;
@@ -725,9 +725,10 @@ uint32_t ch_common_range_lsb_to_mm(const ch_dev_t *dev_ptr, uint32_t time_of_fli
 			// underflow - range is very close to zero, use minimum value
 			range = CH_MIN_RANGE_VAL;
 		}
-#ifdef CHDRV_DEBUG  // formula debug
-		printf("after = %lu\n", range);
-#endif
+
+		// formula debug
+		CH_LOG_DEBUG_MSG("after = %lu", range);
+		CH_LOG_DEBUG_END();
 	}
 
 	if ((range_type == CH_RANGE_ECHO_ONE_WAY) && (range >= (CH_MIN_RANGE_VAL * 2))) {
@@ -886,11 +887,10 @@ static uint32_t measure_pmut_frequency(ch_dev_t *dev_ptr) {
 	reg_addr = (uint16_t)(uintptr_t) & (clock_ctrl_ptr->fcount_cycles);  // fcount cycles
 	chdrv_write_word(dev_ptr, reg_addr, dev_ptr->fcount_cycles);
 	err = chdrv_event_trigger_and_wait(dev_ptr, EVENT_MUT_FCOUNT);  // start PMUT freq count
-#ifdef CHDRV_DEBUG
+
 	if (err) {
-		printf("measure_pmut_frequency:  error waiting for EVENT_MUT_FCOUNT\n");
+		CH_LOG_ERR("Error waiting for EVENT_MUT_FCOUNT");
 	}
-#endif
 
 	if (!err) {
 		/* read result */
@@ -910,9 +910,7 @@ static uint32_t measure_pmut_frequency(ch_dev_t *dev_ptr) {
 		dev_ptr->pmut_clock_fcount = raw_pmut_count;
 	}
 
-#ifdef CHDRV_DEBUG
-	printf("measure_pmut_frequency:  raw_pmut_count = %u pmut_freq = %lu Hz\n", raw_pmut_count, pmut_freq);
-#endif
+	CH_LOG_INFO("raw_pmut_count = %u pmut_freq = %lu Hz", raw_pmut_count, pmut_freq);
 
 	return pmut_freq;
 }
@@ -923,11 +921,8 @@ void ch_common_store_op_freq(ch_dev_t *dev_ptr) {
 	uint32_t pmut_freq;
 	uint32_t cpu_freq;
 
-#ifdef CHDRV_DEBUG
-	printf("\n\r");
-	printf("ch_common_store_op_freq:  dev_ptr->fcount_cycles = %u\n", dev_ptr->fcount_cycles);
-	printf("ch_common_store_op_freq:  dev_ptr->rtc_frequency = %u Hz\n", dev_ptr->rtc_frequency);
-#endif
+	CH_LOG_DEBUG("dev_ptr->fcount_cycles = %u", dev_ptr->fcount_cycles);
+	CH_LOG_DEBUG("dev_ptr->rtc_frequency = %u Hz", dev_ptr->rtc_frequency);
 
 	/* Run BIST on sensor */
 	chdrv_run_bist(dev_ptr);
@@ -997,9 +992,8 @@ void ch_common_store_bandwidth(ch_dev_t *dev_ptr) {
 		dev_ptr->bandwidth = (uint16_t)FIXED2INT(bandwidth);
 	} else {
 		dev_ptr->bandwidth = 0;
-#ifdef CHDRV_DEBUG
-		printf("Error reading BIST IQ data : %u\r\n", err);
-#endif
+
+		CH_LOG_ERR("Error reading BIST IQ data : %u", err);
 	}
 }
 
@@ -1329,9 +1323,8 @@ uint16_t ch_common_get_rx_low_gain(ch_dev_t *dev_ptr) {
 uint8_t ch_common_set_tx_length(ch_dev_t *dev_ptr, uint16_t num_cycles) {
 	uint8_t ret_val = 0;
 
-#ifdef CHDRV_DEBUG
-	printf("ch_common_set_tx_length: num_cycles=%d\n", num_cycles);
-#endif  // CHDRV_DEBUG
+	CH_LOG_INFO("num_cycles=%d", num_cycles);
+
 	if (dev_ptr->asic_gen == CH_ASIC_GEN_1_WHITNEY) {
 #ifdef INCLUDE_WHITNEY_SUPPORT
 		if (dev_ptr->part_number == CH101_PART_NUMBER) {
@@ -1647,13 +1640,11 @@ static uint32_t interpolate_dco_code(ch_dev_t *dev_ptr, uint32_t target_period_n
 		freq_trim_est = SCM_PMUT_CLK_FREQ_TRIM_BM;
 	}
 	freq = set_new_pmut_code(dev_ptr, (uint16_t)freq_trim_est, bias_trim);
-#ifdef CHDRV_DEBUG
-	char cbuf[80];
-	snprintf(cbuf, sizeof(cbuf), "# %u, est=%u, dco0=%lu, dco1=%lu, dtarg=%lu, freq=%lu, ftarg= %lu\n",
-	         dev_ptr->io_index, (uint16_t)freq_trim_est, dco_period_ns[0], dco_period_ns[1], target_period_ns, freq,
-	         NSEC_PER_SEC / target_period_ns);
-	chbsp_print_str(cbuf);
-#endif
+
+	CH_LOG_INFO("# %u, est=%u, dco0=%lu, dco1=%lu, dtarg=%lu, freq=%lu, ftarg= %lu", dev_ptr->io_index,
+	            (uint16_t)freq_trim_est, dco_period_ns[0], dco_period_ns[1], target_period_ns, freq,
+	            NSEC_PER_SEC / target_period_ns);
+
 	*freq_trim_out = (uint16_t)freq_trim_est;
 
 	return freq;
@@ -1696,16 +1687,10 @@ static uint32_t find_closest_frequency(ch_dev_t *dev_ptr, uint16_t freq_trim_gue
 		if (min_frequency_err_hz > abs((int32_t)freq - (int32_t)target_freq_hz)) {
 			min_frequency_err_hz = abs((int32_t)freq - (int32_t)target_freq_hz);
 			idx_min_error        = i;
-#ifdef CHDRV_DEBUG
 
-			printf("# *");
-#endif
+			CH_LOG_DEBUG("# *");
 		}
-#ifdef CHDRV_DEBUG
-		char cbuf[80];
-		snprintf(cbuf, sizeof(cbuf), "# dcoest=%u, freq=%lu\n", (uint16_t)((int16_t)freq_trim_guess + i), freq);
-		chbsp_print_str(cbuf);
-#endif
+		CH_LOG_DEBUG("# dcoest=%u, freq=%lu", (uint16_t)((int16_t)freq_trim_guess + i), freq);
 	}
 	freq_trim_guess = (uint16_t)((int16_t)freq_trim_guess + idx_min_error);
 	freq            = set_new_pmut_code(dev_ptr, freq_trim_guess, bias_trim);
@@ -1763,43 +1748,33 @@ uint8_t ch_common_set_frequency(ch_dev_t *dev_ptr, uint32_t request_op_freq_hz) 
 		} else {
 			return ret_val;
 		}
-#ifdef CHDRV_DEBUG
-		char cbuf[80];
-		snprintf(cbuf, sizeof(cbuf), "# Port %u, dco0=%lu, dco1=%lu, dco_code_estimate=%u, freq=%lu, targ= %lu\n",
-		         dev_ptr->io_index, pmut_clk_period_ns[0], pmut_clk_period_ns[1], dco_code_estimate, freq,
-		         target_freq_hz);
-		chbsp_print_str(cbuf);
-#endif
+
+		CH_LOG_DEBUG("# Port %u, dco0=%lu, dco1=%lu, dco_code_estimate=%u, freq=%lu, targ= %lu", dev_ptr->io_index,
+		             pmut_clk_period_ns[0], pmut_clk_period_ns[1], dco_code_estimate, freq, target_freq_hz);
+
 		min_frequency_err_hz   = abs((int32_t)freq - (int32_t)target_freq_hz);
 		uint32_t idx_min_error = 0;
 		// if the error is too high, search around the estimate for the best code
 		if (min_frequency_err_hz > CH101_DCO_SEARCH_THRESHOLD) {
-#ifdef CHDRV_DEBUG
-			snprintf(cbuf, sizeof(cbuf), "# Frequency error above %dHz, searching for better match to %luHz\n",
-			         CH101_DCO_SEARCH_THRESHOLD, target_freq_hz);
-			chbsp_print_str(cbuf);
-#endif
+
+			CH_LOG_INFO("# Frequency error above %dHz, searching for better match to %luHz", CH101_DCO_SEARCH_THRESHOLD,
+			            target_freq_hz);
+
 			int i;
 			for (i = -5; i < 6; i++) {  //+/-5 DCO codes should be about +/-1500Hz
 				freq = set_new_dco_code(dev_ptr, dco_code_estimate + i);
 				if (abs((int32_t)freq - (int32_t)target_freq_hz) < min_frequency_err_hz) {
 					min_frequency_err_hz = abs((int32_t)freq - (int32_t)target_freq_hz);
 					idx_min_error        = i;
-#ifdef CHDRV_DEBUG
-					printf("# *");
-#endif
+
+					CH_LOG_DEBUG("# *");
 				}
-#ifdef CHDRV_DEBUG
-				snprintf(cbuf, sizeof(cbuf), "# dco_code_estimate=%u, freq=%lu\n", dco_code_estimate + i, freq);
-				chbsp_print_str(cbuf);
-#endif
+				CH_LOG_DEBUG("# dco_code_estimate=%u, freq=%lu", dco_code_estimate + i, freq);
 			}
 			dco_code_estimate = dco_code_estimate + idx_min_error;
 			freq              = set_new_dco_code(dev_ptr, dco_code_estimate);
-#ifdef CHDRV_DEBUG
-			snprintf(cbuf, sizeof(cbuf), "# Final setting dco=%u, freq=%lu\n", dco_code_estimate, freq);
-			chbsp_print_str(cbuf);
-#endif
+
+			CH_LOG_DEBUG("# Final setting dco=%u, freq=%lu", dco_code_estimate, freq);
 		}
 		ret_val = RET_OK;
 #endif  // INCLUDE_WHITNEY_SUPPORT
@@ -1855,12 +1830,7 @@ uint8_t ch_common_set_frequency(ch_dev_t *dev_ptr, uint32_t request_op_freq_hz) 
 		/* Store values in device descriptor */
 		dev_ptr->cpu_frequency = cpu_freq;
 
-#ifdef CHDRV_DEBUG
-		char cbuf[80];
-		snprintf(cbuf, sizeof(cbuf), "#ch_common_set_frequency freq_trim=%u, bias=%u freq=%lu\n", freq_trim_out,
-		         bias_trim, freq);
-		chbsp_print_str(cbuf);
-#endif
+		CH_LOG_INFO("freq_trim=%u, bias=%u freq=%lu", freq_trim_out, bias_trim, freq);
 		ret_val = RET_OK;
 #endif  // INCLUDE_SHASTA_SUPPORT
 	}
@@ -2054,18 +2024,19 @@ uint32_t ch_common_cycles_to_usec(ch_dev_t *dev_ptr, uint32_t num_cycles) {
 	return num_usec;
 }
 
-uint32_t ch_common_usec_to_ticks(ch_dev_t *dev_ptr, uint32_t num_usec) {
-	uint32_t rtc_ticks = 0;
+uint16_t ch_common_usec_to_ticks(const ch_dev_t *dev_ptr, uint32_t num_usec) {
+	uint16_t rtc_ticks = 0;
 
-	rtc_ticks = ((num_usec / dev_ptr->group->rtc_cal_pulse_ms) * dev_ptr->rtc_cal_result) / 1000;
+	rtc_ticks = (uint16_t)((uint64_t)num_usec * dev_ptr->rtc_cal_result / dev_ptr->group->rtc_cal_pulse_ms / 1000);
 
 	return rtc_ticks;
 }
 
-uint32_t ch_common_ticks_to_usec(ch_dev_t *dev_ptr, uint32_t num_rtc_ticks) {
+uint32_t ch_common_ticks_to_usec(const ch_dev_t *dev_ptr, uint16_t num_rtc_ticks) {
 	uint32_t num_usec = 0;
 
-	num_usec = ((num_rtc_ticks * dev_ptr->group->rtc_cal_pulse_ms) / dev_ptr->rtc_cal_result) * 1000;
+	num_usec =
+			(uint32_t)(((float)(num_rtc_ticks * dev_ptr->group->rtc_cal_pulse_ms) / dev_ptr->rtc_cal_result) * 1000.0);
 
 	return num_usec;
 }
@@ -2637,22 +2608,23 @@ void ch_common_meas_get_queue_info(ch_dev_t *dev_ptr, ch_meas_queue_info_t *info
 uint8_t ch_common_meas_update_counts(ch_dev_t *dev_ptr, uint8_t meas_num, measurement_t *meas_ptr) {
 	pmut_transceiver_inst_t *trx_inst_ptr =
 			(pmut_transceiver_inst_t *)&(meas_ptr->trx_inst[0]);  // first instruction in meas
-	uint16_t total_cycles      = 0;
-	uint16_t total_rx_samples  = 0;
-	uint8_t total_segments     = 0;
-	uint16_t pre_rx_cycles     = 0;
-	uint8_t num_rx_segments    = 0;
-	uint16_t max_range_mm      = 0;
-	uint8_t err                = 0;
-	uint16_t total_tx_segments = 0;  // # of tx instructions
+	uint16_t total_cycles        = 0;
+	uint16_t total_rx_samples    = 0;
+	uint8_t total_segments       = 0;
+	uint16_t pre_rx_cycles       = 0;
+	uint16_t pre_rx_cycles_no_tx = 0;  // COUNT cycles when no TX
+	uint8_t num_rx_segments      = 0;
+	uint16_t max_range_mm        = 0;
+	uint8_t err                  = 0;
+	uint16_t total_tx_segments   = 0;  // # of tx instructions
 
 	dev_ptr->meas_num_segments[meas_num]   = 0;
 	dev_ptr->meas_num_rx_samples[meas_num] = 0;
 
+	uint16_t num_inst = 0;  // # of instructions
 	/* Examine instructions until EOF marker */
 	while (trx_inst_ptr->cmd_config != PMUT_CMD_EOF) {
 		uint16_t num_samples = 0;  // samples in this segment
-		uint16_t num_inst    = 0;  // # of instructions
 		ch_meas_seg_type_t seg_type =
 				(ch_meas_seg_type_t)((trx_inst_ptr->cmd_config >> PMUT_CMD_BITSHIFT) & PMUT_CMD_BITS);
 		// use instruction as segment type
@@ -2669,12 +2641,21 @@ uint8_t ch_common_meas_update_counts(ch_dev_t *dev_ptr, uint8_t meas_num, measur
 			num_samples       = ch_common_cycles_to_samples(trx_inst_ptr->length, meas_ptr->odr);
 			total_rx_samples += num_samples;
 			num_rx_segments++;
-		} else {
-			if (num_rx_segments == 0) {
-				pre_rx_cycles += trx_inst_ptr->length;
+
+			if (total_tx_segments == 0) {
+				pre_rx_cycles = pre_rx_cycles_no_tx;
 			}
-			if (seg_type == CH_MEAS_SEG_TYPE_TX) {
-				total_tx_segments++;
+		} else if (seg_type == CH_MEAS_SEG_TYPE_TX) {
+			if (num_rx_segments == 0) {
+				pre_rx_cycles       += trx_inst_ptr->length;
+				pre_rx_cycles_no_tx  = 0;
+			}
+			total_tx_segments++;
+		} else if (seg_type == CH_MEAS_SEG_TYPE_COUNT) {
+			if (total_tx_segments > 0) {
+				pre_rx_cycles += trx_inst_ptr->length;
+			} else {
+				pre_rx_cycles_no_tx += trx_inst_ptr->length;
 			}
 		}
 
@@ -2689,7 +2670,7 @@ uint8_t ch_common_meas_update_counts(ch_dev_t *dev_ptr, uint8_t meas_num, measur
 		dev_ptr->meas_num_segments[meas_num]    = total_segments;
 		dev_ptr->meas_pre_rx_cycles[meas_num]   = pre_rx_cycles;
 
-		max_range_mm                         = ch_samples_to_mm(dev_ptr, total_rx_samples);
+		max_range_mm                         = ch_common_meas_samples_to_mm(dev_ptr, meas_num, total_rx_samples);
 		dev_ptr->meas_max_range_mm[meas_num] = max_range_mm;  // store corresponding range in mm
 
 		/* Fill in ch_dev_t fields for compatibility with simple SonicLib v2 API calls (use default meas) */
@@ -2836,7 +2817,7 @@ uint8_t ch_common_meas_set_num_samples(ch_dev_t *dev_ptr, uint8_t meas_num, uint
 		dev_ptr->meas_num_rx_samples[meas_num] -= deleted_samples;
 	}
 
-	max_range_mm                         = ch_meas_samples_to_mm(dev_ptr, meas_num, num_samples);
+	max_range_mm                         = ch_common_meas_samples_to_mm(dev_ptr, meas_num, num_samples);
 	dev_ptr->meas_max_range_mm[meas_num] = max_range_mm;
 
 	if (meas_num == CH_DEFAULT_MEAS_NUM) {
@@ -2875,21 +2856,17 @@ uint8_t ch_common_meas_set_max_range(ch_dev_t *dev_ptr, uint8_t meas_num, uint16
 		if (meas_num == CH_DEFAULT_MEAS_NUM) {
 			dev_ptr->max_range = dev_ptr->meas_max_range_mm[meas_num];
 		}
-#ifdef CHDRV_DEBUG
-		char cbuf[80];
-		snprintf(cbuf, sizeof(cbuf), "num_samples=%lu\n", num_samples);
-		chbsp_print_str(cbuf);
-#endif
+
+		CH_LOG_DEBUG("num_samples=%lu", num_samples);
 	}
 
 	if (!ret_val) {
 		ret_val = ch_meas_set_num_samples(dev_ptr, meas_num, num_samples);
 	}
 
-#ifdef CHDRV_DEBUG
-	printf("ch_common_meas_set_max_range: ret_val: %u  meas_num: %u dev_ptr->meas_num_rx_samples: %u\n", ret_val,
-	       meas_num, dev_ptr->meas_num_rx_samples[meas_num]);
-#endif
+	CH_LOG_INFO("ret_val: %u  meas_num: %u dev_ptr->meas_num_rx_samples: %u", ret_val, meas_num,
+	            dev_ptr->meas_num_rx_samples[meas_num]);
+
 	return ret_val;
 }
 

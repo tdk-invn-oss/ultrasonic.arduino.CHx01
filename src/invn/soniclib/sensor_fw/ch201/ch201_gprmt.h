@@ -23,6 +23,10 @@
 #ifndef CH201_GPRMT_H_
 #define CH201_GPRMT_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include "ch201.h"
 #include <invn/soniclib/ch_rangefinder.h>
@@ -65,5 +69,9 @@ uint16_t get_ch201_gprmt_fw_ram_init_size(void);
 const unsigned char *get_ram_ch201_gprmt_init_ptr(void);
 
 uint8_t ch201_gprmt_init(ch_dev_t *dev_ptr, fw_info_t **fw_info);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

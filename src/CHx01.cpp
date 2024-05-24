@@ -18,164 +18,200 @@
 #include "CHx01.h"
 #include "Arduino.h"
 #include "Wire.h"
+#include <math.h>
 
 #include "board/chbsp_chirp.h"
-#include <invn/soniclib/ch_rangefinder.h>
 
-// i2c
-static bool is_measure_ready = false;
+#define RTC_CAL_PULSE_MS (100)
 
 static void sensor_int_callback(ch_group_t *grp_ptr, uint8_t dev_num,
                                 ch_interrupt_type_t int_type) {
   if (int_type == CH_INTERRUPT_TYPE_DATA_RDY) {
-    is_measure_ready = true;
+    ((CHx01*)grp_ptr)->get_device(dev_num)->set_data_ready();
   }
 }
 
-// CHx01 constructor 
-CHx01::CHx01(TwoWire& i2c_ref, uint8_t int1_id, uint8_t int_dir_id,
-                   uint8_t rst_id, uint8_t prog_id, bool rst_n=true) {
-  chbsp_module_init(i2c_ref, int1_id, int_dir_id, rst_id, prog_id, rst_n);
+// CHx01 constructor: the group has an existing sensor object
+CHx01::CHx01(CHx01_dev* dev, int rst_id, bool rst_n)
+{
+  device[0] = dev;
+  num_ports = 1;
+  chbsp_module_init(rst_id, rst_n);
+}
+
+CHx01::CHx01(CHx01_dev* dev0, CHx01_dev* dev1, int rst_id, bool rst_n)
+{
+  device[0] = dev0;
+  device[1] = dev1;
+  num_ports = 2;
+  chbsp_module_init(rst_id, rst_n);
+}
+
+CHx01::CHx01(CHx01_dev& dev0, CHx01_dev& dev1, int rst_id, bool rst_n)
+{
+  device[0] = &dev0;
+  device[1] = &dev1;
+  num_ports = 2;
+  chbsp_module_init(rst_id, rst_n);
+}
+
+CHx01_dev* CHx01::get_device(int id)
+{
+  if (id < num_ports)
+  {
+    return (CHx01_dev*)device[id];
+  }
+  return NULL;
 }
 
 /* Initialize hardware and ICU sensor */
 int CHx01::begin() {
   uint8_t rc = 0;
-  chbsp_board_init(&chirp_group);
-  rc = ch_init(&chirp_device, &chirp_group, 0, fw_init_func);
 
+  board_init(this);
+
+  /* Initialize group descriptor */
+  rc = ch_group_init(this, num_ports, 1 , RTC_CAL_PULSE_MS);
+
+  for(int i= 0; i < num_ports; i++)
+  {
+    rc |= get_device(i)->begin((ch_group_t*)this,i);
+  }
+  
   if (rc == 0) {
-    rc = ch_group_start(&chirp_group);
+    rc = ch_group_start(this);
   }
   if (rc == 0) {
     /* Register callback function to be called when Chirp sensor interrupts */
-    ch_io_int_callback_set(&chirp_group, sensor_int_callback);
+    ch_io_int_callback_set(this, sensor_int_callback);
   }
   return rc;
 }
 
-uint16_t CHx01::get_max_samples(void) {
-  return ch_get_max_samples(&chirp_device);
+uint16_t CHx01::get_max_samples(int sensor_id) {
+  return get_device(sensor_id)->get_max_samples();
 };
 
-uint16_t CHx01::get_max_range(void) {
-  return ch_samples_to_mm(&chirp_device, ch_get_max_samples(&chirp_device));
+uint16_t CHx01::get_max_range(int sensor_id) {
+  return get_device(sensor_id)->get_max_range();
 };
 
-uint16_t CHx01::get_measure_range(void) {
-  uint16_t nb_samples = ch_get_num_samples(&chirp_device);
-  return ch_samples_to_mm(&chirp_device, nb_samples);
+uint16_t CHx01::get_measure_range(int sensor_id) {
+  return get_device(sensor_id)->get_measure_range();
 };
 
-int CHx01::free_run(void) { return free_run(get_max_range()); }
+int CHx01::free_run(void) { return get_device(0)->free_run(); }
 
 int CHx01::free_run(uint16_t range_mm) {
-  return free_run(range_mm, default_odr_ms);
+  return get_device(0)->free_run(range_mm);
 }
 
-int CHx01::algo_config(void)
+int CHx01::algo_config(int sensor_id)
 {
-  ch_rangefinder_algo_config_t algo_config;
-  algo_config.static_range = 0;
-  algo_config.thresh_ptr = NULL;
-  return ch_rangefinder_set_algo_config(&chirp_device, &algo_config);
+  return get_device(sensor_id)->algo_config();
 }
 
 int CHx01::free_run(uint16_t range_mm, uint16_t interval_ms) {
-  int rc;
+  return get_device(0)->free_run(range_mm,interval_ms);
+}
 
-  rc = ch_set_max_range(&chirp_device, range_mm);
-
-  if (rc == 0) {
-    rc = ch_set_freerun_interval(&chirp_device, interval_ms);
-  }
-  if (rc == 0) {
-    rc = ch_freerun_time_hop_enable(&chirp_device);
-  }
-  /* Apply GPR configuration */
-  if (rc == 0) {
-    rc = algo_config();
-  }
-  if (rc == 0) {
-    rc = ch_set_mode(&chirp_device, CH_MODE_FREERUN);
-  }
-  if (rc == 0) {
-    chdrv_int_set_dir_in(&chirp_device);
-    chdrv_int_interrupt_enable(&chirp_device);
-  }
-
+int CHx01::start_trigger(uint16_t range_mm) {
+  int rc = 0;
+  rc |= get_device(0)->start_trigger(range_mm,CH_MODE_TRIGGERED_TX_RX);
+  rc |= get_device(1)->start_trigger(range_mm,CH_MODE_TRIGGERED_RX_ONLY);
   return rc;
 }
 
-bool CHx01::data_ready(void) { return is_measure_ready; }
-
-void CHx01::clear_data_ready(void) { is_measure_ready = false; }
-
-uint16_t CHx01::part_number(void) {
-  return ch_get_part_number(&chirp_device);
+void CHx01::trig(void) {
+  return ch_group_trigger(this);
 }
 
-uint32_t CHx01::frequency(void) { return ch_get_frequency(&chirp_device); }
-
-uint16_t CHx01::bandwidth(void) { return ch_get_bandwidth(&chirp_device); }
-
-uint16_t CHx01::rtc_cal(void) {
-  return ch_get_rtc_cal_result(&chirp_device);
+bool CHx01::data_ready(int sensor_id) {
+  return get_device(sensor_id)->data_ready();
 }
 
-uint16_t CHx01::rtc_cal_pulse_length(void) {
-  return ch_get_rtc_cal_pulselength(&chirp_device);
+uint16_t CHx01::part_number(int sensor_id) {
+  return get_device(sensor_id)->part_number();
 }
 
-float CHx01::cpu_freq(void) {
-  return ch_get_cpu_frequency(&chirp_device) / 1000000.0f;
+uint32_t CHx01::frequency(int sensor_id) {
+  return get_device(sensor_id)->frequency();
 }
-const char *CHx01::fw_version(void) {
-  return ch_get_fw_version_string(&chirp_device);
+
+uint16_t CHx01::bandwidth(int sensor_id) {
+  return get_device(sensor_id)->bandwidth();
+}
+
+uint16_t CHx01::rtc_cal(int sensor_id) {
+  return get_device(sensor_id)->rtc_cal();
+}
+
+uint16_t CHx01::rtc_cal_pulse_length(int sensor_id) {
+  return get_device(sensor_id)->rtc_cal_pulse_length();
+}
+
+float CHx01::cpu_freq(int sensor_id) {
+  return get_device(sensor_id)->cpu_freq();
+}
+const char *CHx01::fw_version(int sensor_id) {
+  return get_device(sensor_id)->fw_version();
 }
 
 void CHx01::print_informations(void) {
-  Serial.println("Sensor informations");
-  Serial.print("    Type: ");
-  Serial.println(part_number());
-  Serial.print("    Operating Frequency (Hz): ");
-  Serial.println(frequency());
-  Serial.print("    Bandwidth (Hz): ");
-  Serial.println(bandwidth());
-  Serial.print("    RTC Cal (lsb @ ms): ");
-  Serial.print(rtc_cal());
-  Serial.print("@");
-  Serial.println(rtc_cal_pulse_length());
-  Serial.print("    CPU Freq (MHz): ");
-  Serial.println(cpu_freq());
-  Serial.print("    max range (mm): ");
-  Serial.println(get_max_range());
-  Serial.print("    Firmware: ");
-  Serial.println(fw_version());
-  Serial.print("    Nb samples: ");
-  Serial.println(ch_get_max_samples(&chirp_device));
+  for(int i = 0; i < num_ports; i++)
+  {
+    Serial.print("Sensor ");
+    Serial.print(i);
+    Serial.println(":");
+    get_device(i)->print_informations();
+  }
 }
 
 void CHx01::print_configuration(void) {
-  Serial.println("Sensor configuration");
-  Serial.print("    measure range (mm): ");
-  Serial.println(get_measure_range());
+  for(int i = 0; i < num_ports; i++)
+  {
+    Serial.print("Sensor ");
+    Serial.print(i);
+    Serial.println(":");
+    get_device(i)->print_configuration();
+  }
 }
 
-float CHx01::get_range(void) {
-  float range_mm = 0.0;
-  uint32_t range_q5;
+float CHx01::get_range(int sensor_id) {
+  return get_device(sensor_id)->get_range();
+}
 
-  if (data_ready()) {
-    range_q5 = ch_get_range(&chirp_device, CH_RANGE_ECHO_ONE_WAY);
-    if (range_q5 != CH_NO_TARGET) {
-      /* Display single detected target (if any) */
-      range_mm = range_q5 / 32.0;
-    } else {
-      /* No target detected: range set to 0 */
-      range_mm = 0.0;
-    }
-    clear_data_ready();
+int CHx01::triangulate(const float distance_between_sensors_mm, float& x, float& y, float offset)
+{
+  int rc = 0;
+  float range0_mm = get_range(0);
+  float range1_mm = get_range(1);
+  float diff_mm;
+
+  if ((range0_mm == 0)||(range1_mm == 0)||(range1_mm<=range0_mm))
+  {
+    /* One of the sensor losts the target */
+    return -1;
   }
-  return range_mm;
+  /* Remove transmit distance to the 2nd sensor distance */
+  range1_mm -= range0_mm + offset;
+
+  diff_mm = (range0_mm > range1_mm) ? (range0_mm - range1_mm) : (range1_mm - range0_mm);
+  if(diff_mm > distance_between_sensors_mm)
+  {
+    /* This is not supposed to happen geometrically */
+    return -2;
+  }
+  x =  (range0_mm*range0_mm - range1_mm*range1_mm) / (2*distance_between_sensors_mm);
+
+  y = distance_between_sensors_mm/2 +x;
+  y = (range0_mm-y)*(range0_mm + y);
+  if(y>0)
+  {
+    y = sqrt(y);
+  } else {
+    y = 0;
+    return -3;
+  }
+  return 0;
 }

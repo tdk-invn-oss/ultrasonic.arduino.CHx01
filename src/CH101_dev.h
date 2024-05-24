@@ -15,16 +15,15 @@
  *
  */
 
-#ifndef CH101_H
-#define CH101_H
+#ifndef CH101_DEV_H
+#define CH101_DEV_H
 
 #include "Arduino.h"
 #include "Wire.h"
-#include "CHx01.h"
-#include "CH101_dev.h"
+#include "CHx01_dev.h"
 #include <stdint.h>
 #include <string.h>
-#include "board/chbsp_chirp.h"
+
 
 extern "C" {
 #include "invn/soniclib/sensor_fw/ch101/ch101_gpr.h"
@@ -32,19 +31,18 @@ extern "C" {
 
 #include "invn/soniclib/soniclib.h"
 
-class CH101 : public CHx01 {
+class CH101_dev : public CHx01_dev {
 public:
   /*!
    * @brief Class constructor.
    * @param i2c_ref Reference of the Wire to be used
+   * @param i2c_addr i2c address of the device
    * @param int1_id ID of the interrupt 1 pin
    * @param int_dir_id ID of the interrupt direction pin
-   * @param rst_id ID of the interrupt reset pin
    * @param prog_id ID of the interrupt prog pin
-   * @param rst_n If true the reset signal is active LOW (default)
    */
-  CH101(TwoWire &i2c_ref, uint8_t int1_id, uint8_t int_dir_id,uint8_t rst_id,
-           uint8_t prog_id, bool rst_n=true) : CHx01(new CH101_dev(i2c_ref, CHIRP_DEVICE0_I2C_ADDR, int1_id, int_dir_id, prog_id),rst_id, rst_n) {};
+  CH101_dev(TwoWire &i2c_ref, uint8_t i2c_addr, int int1_id, int int_dir_id, int prog_id) : CHx01_dev(i2c_ref, i2c_addr, int1_id,int_dir_id, prog_id)
+          {fw_init_func = ch101_gpr_init;};
 
   /*!
    * @brief Get the raw I/Q measurement data from a sensor.
@@ -53,14 +51,6 @@ public:
    * @return 0 if successful, 1 if error
    */
   uint8_t get_iq_data(ch_iq_sample_t (&iq_data)[CH101_MAX_NUM_SAMPLES], uint16_t& nb_samples);
-
-  /*!
-   * @brief Get the raw I/Q measurement data from a sensor.
-   * @param iq_data pointer to data buffer where I/Q data will be written (length = CH101_MAX_NUM_SAMPLES)
-   * @param num_samples number of samples read from sensor
-   * @return 0 if successful, 1 if error
-   */
-  uint8_t get_iq_data(int sensor_id, ch_iq_sample_t (&iq_data)[CH101_MAX_NUM_SAMPLES], uint16_t& nb_samples);
 };
 
-#endif // CH101_H
+#endif // CH101_DEV_H

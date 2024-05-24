@@ -334,8 +334,8 @@ uint32_t ch_common_samples_to_cycles(uint16_t num_samples, ch_odr_t odr);
 uint16_t ch_common_cycles_to_samples(uint32_t num_cycles, ch_odr_t odr);
 uint32_t ch_common_usec_to_cycles(ch_dev_t *dev_ptr, uint32_t num_usec);
 uint32_t ch_common_cycles_to_usec(ch_dev_t *dev_ptr, uint32_t num_cycles);
-uint32_t ch_common_usec_to_ticks(ch_dev_t *dev_ptr, uint32_t num_usec);
-uint32_t ch_common_ticks_to_usec(ch_dev_t *dev_ptr, uint32_t num_rtc_periods);
+uint16_t ch_common_usec_to_ticks(const ch_dev_t *dev_ptr, uint32_t num_usec);
+uint32_t ch_common_ticks_to_usec(const ch_dev_t *dev_ptr, uint16_t num_rtc_periods);
 
 uint16_t ch_common_get_num_output_samples(ch_dev_t *dev_ptr);
 

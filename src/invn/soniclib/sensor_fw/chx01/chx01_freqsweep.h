@@ -26,6 +26,10 @@
 #ifndef CHX01_FREQSWEEP_H_
 #define CHX01_FREQSWEEP_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 #include <invn/soniclib/soniclib.h>
@@ -197,4 +201,9 @@ uint16_t chx01_freqsweep_get_dco_code(ch_dev_t *dev_ptr);
 int chx01_freqsweep_set_dco_start(ch_dev_t *dev_ptr, uint16_t dco_start);
 
 int chx01_freqsweep_set_dco_stop(ch_dev_t *dev_ptr, uint16_t dco_stop);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* CHX01_FREQSWEEP_H_ */

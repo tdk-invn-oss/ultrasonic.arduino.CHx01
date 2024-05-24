@@ -20,10 +20,10 @@ The below wiring description is given for an Arduino Zero board:
 | GND           | J7.3           |
 | SDA           | J6.21          |
 | SCK           | J6.19          |
-| INT1=DIG.2    | J7.16          |
+| INT1_0=DIG.2  | J7.16          |
 | INT_DIR=DIG.8 | J7.26          |
 | RST=DIG.9     | J7.10          |
-| PROG=DIG.10   | J7.28          |
+| PROG0=DIG.10  | J7.28          |
 
 On Ultrasonic ToF EVK, connect EN_1v8 to 3v3
 
@@ -38,6 +38,17 @@ The CHx01 sensor module must be connected with a flex to the J11 connector (Devi
 **Note:** On CHx01 sensor, the interrupt is a 1v8 bidirectional signal going through a level shifter (present on Ultrasonic ToF EVK board) as Arduino IOs are 3v3.
 The INT_DIR signal controls the direction of the interrupt throught the level shifter.
 If no level shifter is required in your design (or when using a level shifter not having a direction pin), INT_DIR can be left unconnected.
+
+## Adding a second sensor
+
+This library includes triangulation sketches requiring 2 CHx01 sensors.
+The second CHx01 sensor module must be connected with a flex to the J13 connector (Device 1 port).  
+Other additional signals are required:
+
+|Arduino Zero|Ultrasonic ToF EVK board|
+| --- | --- |
+| INT1_1=DIG.3  | J7.18          |
+| PROG1=DIG.11  | J7.30          |
 
 # Library API
 
@@ -153,6 +164,87 @@ Serial.print("Range(mm):");
 Serial.println(range_mm);
 ```
 
+## Using 2 sensors
+
+**CH101_dev(TwoWire &i2c_ref, uint8_t i2c_addr, int int1_id, int int_dir_id, int prog_id)**
+
+This method creates an instance of CH101 device, using provided I2C instance and address, and specified pins for interrupt, int direction and program.
+
+```C++
+CH101_dev dev0(Wire, CHIRP_DEVICE0_I2C_ADDR, 2, 8, 10);
+```
+
+**CH201_dev(TwoWire &i2c_ref, uint8_t i2c_addr, int int1_id, int int_dir_id, int prog_id)**
+
+This method creates an instance of CH201 device, using provided I2C instance and address, and specified pins for interrupt, int direction and program.
+
+```C++
+CH201_dev dev0(Wire, CHIRP_DEVICE0_I2C_ADDR, 2, 8, 10);
+```
+
+**CHx01(CHx01_dev& dev0, CHx01_dev& dev1, int rst_id, bool rst_n=true)**
+
+This method creates a group of CHx01 devices with dev0 & dev1, using specified pin for reset (rst_n specifies its polarity).  
+In order to work together, CHx01 devices must be part of a sensor group.
+
+```C++
+CH101_dev dev0(Wire, CHIRP_DEVICE0_I2C_ADDR, 2, 8, 10);
+CH101_dev dev1(Wire, CHIRP_DEVICE0_I2C_ADDR, 3, 8, 11);
+CHx01 CHx01(dev0,dev1, 9, false);
+```
+
+**int start_trigger(uint16_t range_mm)**
+
+When using multiple CHx01 sensors, they must be synchronized to work together.
+This method starts first sensor as "emitter and receiver" and second sensor as "receiver only".
+Measurements will be triggered using the interrupt pins.
+The max range must be specified in mm.
+
+```C++
+CHx01.start_trigger(500);
+```
+
+**void trig(void)**
+
+This method is used to trigger a measurement for a group of CHx01 sensors.
+
+```C++
+CHx01.trig();
+```
+
+**bool data_ready(int sensor_id=0)**
+
+The function returns true if a measure is available for the specified sensor id, false if not.
+
+```C++
+if(CHx01.data_ready(0)&&CHx01.data_ready(1))
+{
+    Serial.println("A measure has completed");
+}
+````
+
+**int triangulate(const float distance_between_sensors_mm, float& x, float& y, float offset=0)**
+
+This method is used to compute the plane triangulation of a target using CHx01 measurements.
+To get a valid triangulation using this method, CHx01 sensors must be placed at a certain distance and must be "looking" into the same direction.
+The distance between the sensors must be specified as an input, *x* and *y* are the triangulation ouputs.
+The *x* output corresponds to the target "left-right" position, while *y* corresponds to the distance of the object.
+The method returns negative value if the triangulation computation is impossible (no target or multiple targets detected,...), 0 otherwise.
+A distance offset might be specified in case measured sensor ranges are not aligned.
+
+```C++
+float x,y;
+if(CHx01.triangulate(DISTANCE_BETWEEN_SENSORS_MM,x,y)==0)
+{
+  Serial.print("X:");
+  Serial.println(x);
+  Serial.print(" Y:");
+  Serial.println(y);
+}
+```
+
+![Triangulation](doc/pictures/triangulation.jpg)
+
 # Available Sketches
 
 **CH101_TargetDetection**
@@ -168,13 +260,24 @@ The omnidirectional module detects target at 180° at a reduced range, while the
 
 This sketch initializes a CH101, and starts the Time-of-Flight in free run mode. For each sample, the raw I/Q data is printed on the Serial monitor.
 
+**CH101_Triangulation**
+
+This sketch initializes a group of two CH101 sensors, and starts the triangulation. It uses omnidirectional horns with a distance of 60mm between sensors. For each sample, X and Y target coordinates are printed on the Serial monitor.
+
+![Triangulation plot](doc/pictures/triangulation_plotter.jpg)
+
 **CH201_TargetDetection**
 
 This sketch initializes a CH201, and starts the Time-of-Flight in free run mode. The detected range is printed on the Serial monitor, and can be plotted with the Serial plotter.
 
 ![Serial Plotter](doc/pictures/SerialPlotterCH201.jpg)
 
-
 **CH201_RawData**
 
 This sketch initializes a CH201, and starts the Time-of-Flight in free run mode. For each sample, the raw I/Q data is printed on the Serial monitor.
+
+**CH201_Triangulation**
+
+This sketch initializes a group of two CH201 sensors, and starts the triangulation. It uses a distance of 105mm between sensors. For each sample, X and Y target coordinates are printed on the Serial monitor.
+
+![Triangulation plot](doc/pictures/triangulation_plotter.jpg)

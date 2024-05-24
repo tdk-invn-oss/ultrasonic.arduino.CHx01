@@ -19,142 +19,154 @@
 #define CHx01_H
 
 #include "Arduino.h"
-#include "Wire.h"
 #include <stdint.h>
 #include <string.h>
+#include "CHx01_dev.h"
 
 #include "invn/soniclib/soniclib.h"
 
-/* Target detection thresholds (if supported)
- * These definitions set the sensor's target detection thresholds, only for 
- * sensors using multi-threshold firmware (e.g. ch101_gprmt or ch201_gprmt).
- *
- * These thresholds specify how large a signal must be received, and at what 
- * point in the measurement, for the sensor to indicate that a target was 
- * detected and calculate the range.
- *
- * Each threshold consists of a starting sample number within the measurement 
- * and the corresponding amplitude value that must be reached.  A threshold 
- * extends until the starting sample number of the next threshold, if any.
- */
-#define CHIRP_THRESH_0_START (0) /* threshold 0 - must start at zero */
-#define CHIRP_THRESH_0_LEVEL (5000)
+#define CHIRP_DEVICE0_I2C_ADDR 0x2D
+#define CHIRP_DEVICE1_I2C_ADDR 0x2C
 
-#define CHIRP_THRESH_1_START (26) /* threshold 1 */
-#define CHIRP_THRESH_1_LEVEL (2000)
-
-#define CHIRP_THRESH_2_START (39) /* threshold 2 */
-#define CHIRP_THRESH_2_LEVEL (800)
-
-#define CHIRP_THRESH_3_START (56) /* threshold 3 */
-#define CHIRP_THRESH_3_LEVEL (400)
-
-#define CHIRP_THRESH_4_START (79) /* threshold 4 */
-#define CHIRP_THRESH_4_LEVEL (250)
-
-#define CHIRP_THRESH_5_START (89) /* threshold 5 */
-#define CHIRP_THRESH_5_LEVEL (175)
-
-class CHx01 {
+class CHx01 : public ch_group_t {
 public:
   /*!
-   * @brief Class constructor.
-   * @param i2c_ref Reference of the Wire to be used
-   * @param int1_id ID of the interrupt 1 pin
-   * @param int_dir_id ID of the interrupt direction pin
+   * @brief Class constructor for a single device in the group.
+   * @param dev CH101_dev or CH201_dev object pointer to be added to the group
    * @param rst_id ID of the interrupt reset pin
-   * @param prog_id ID of the interrupt prog pin
    * @param rst_n If true the reset signal is active LOW (default)
    */
-  CHx01(TwoWire &i2c_ref, uint8_t int1_id, uint8_t int_dir_id,
-           uint8_t reset_id, uint8_t prog_id, bool rst_n);
+  CHx01(CHx01_dev* dev, int rst_id, bool rst_n=true);
   /*!
-   * @brief Configure the sensor
+   * @brief Class constructor for a 2 devices group.
+   * @param dev0 CH101_dev or CH201_dev object pointer to be added to the group
+   * @param dev1 CH101_dev or CH201_dev object pointer to be added to the group
+   * @param rst_id ID of the interrupt reset pin
+   * @param rst_n If true the reset signal is active LOW (default)
+   */
+  CHx01(CHx01_dev* dev0, CHx01_dev* dev1, int rst_id, bool rst_n=true);
+  /*!
+   * @brief Class constructor for a 2 devices group.
+   * @param dev0 CH101_dev or CH201_dev object to be added to the group
+   * @param dev1 CH101_dev or CH201_dev object to be added to the group
+   * @param rst_id ID of the interrupt reset pin
+   * @param rst_n If true the reset signal is active LOW (default)
+   */
+  CHx01(CHx01_dev& dev0, CHx01_dev& dev1, int rst_id, bool rst_n=true);
+  /*!
+   * @brief Configure the sensor group
    * @return 0 if successful
    */
    int begin();
   /*!
+   * @brief Get a device from the group
+   * @param id Id of the device to get
+   * @return A pointer to the device defined by id
+   */
+   CHx01_dev* get_device(int id);
+  /*!
    * @brief Get the sensor part number.
+   * @param id Id of the device in the group
    * @return Sensor part number as an integer
    */
-  uint16_t part_number(void);
-
+  uint16_t part_number(int sensor_id=0);
   /*!
    * @brief Get sensor's operating frequency.
+   * @param id Id of the device in the group
    * @return Acoustic operating frequency, in Hz
    */
-  uint32_t frequency(void);
+  uint32_t frequency(int sensor_id=0);
   /*!
    * @brief Get sensor's bandwidth.
+   * @param id Id of the device in the group
    * @return Sensor bandwidth, in Hz, or 0 if error or bandwidth measurement is not available
    */
-  uint16_t bandwidth(void);
+  uint16_t bandwidth(int sensor_id=0);
   /*!
    * @brief Get the real-time clock calibration value.
+   * @param id Id of the device in the group
    * @return Sensor bandwidth, in Hz, or 0 if error or bandwidth measurement is not available
    */
-  uint16_t rtc_cal(void);
+  uint16_t rtc_cal(int sensor_id=0);
   /*!
    * @brief Get the real-time clock calibration pulse length.
+   * @param id Id of the device in the group
    * @return RTC pulse length, in ms
    */
-  uint16_t rtc_cal_pulse_length(void);
+  uint16_t rtc_cal_pulse_length(int sensor_id=0);
   /*!
    * @brief Get the sensor CPU frequency, in Hz.
+   * @param id Id of the device in the group
    * @return sensor CPU frequency, in Hz
    */
-  float cpu_freq(void);
+  float cpu_freq(int sensor_id=0);
   /*!
    * @brief Get the firmware version description string.
+   * @param id Id of the device in the group
    * @return Pointer to character string describing sensor firmware version
    */
-  const char *fw_version(void);
+  const char *fw_version(int sensor_id=0);
   /*!
    * @brief Check if a measure is available.
+   * @param id Id of the device in the group
    * @return True if a measure is available, false otherwise
    */
-  bool data_ready(void);
+  bool data_ready(int sensor_id=0);
   /*!
    * @brief Get the sensor's max number of samples.
+   * @param id Id of the device in the group
    * @return Sensor's max number of sample
    * This value does not depend on sensor current configuration
    */
-  uint16_t get_max_samples(void);
+  uint16_t get_max_samples(int sensor_id=0);
   /*!
    * @brief Get the sensor's max range.
+   * @param id Id of the device in the group
    * @return Sensor's max range in mm
    * This value depends on sensor internal sample buffer size
    */
-  virtual uint16_t get_max_range(void);
+  virtual uint16_t get_max_range(int sensor_id=0);
   /*!
    * @brief Get the sensor's range configured for measures.
+   * @param id Id of the device in the group
    * @return Sensor's measure range in mm
    * This value depends on sensor configured range
    */
-  uint16_t get_measure_range(void);
+  uint16_t get_measure_range(int sensor_id=0);
     /*!
    * @brief Configure embedded algo.
+   * @param id Id of the device in the group
    * @return 0 if successful, 1 if error
    */
-  virtual int algo_config(void);
+  virtual int algo_config(int sensor_id=0);
   /*!
    * @brief Starts sensor in free running mode, with maximum range and default ODR.
    * @return 0 in case of success
    */
-  int free_run();
+  int free_run(void);
   /*!
-   * @brief Starts sensor in free running mode, with provided max range and default ODR.
+   * @brief Starts sensor 0 in free running mode, with provided max range and default ODR.
    * @param range_mm Max detection range to be configured
    * @return 0 in case of success
    */
   int free_run(uint16_t range_mm);
   /*!
-   * @brief Starts sensor in free running mode, with provided max range and ODR.
+   * @brief Starts sensor 0 in free running mode, with provided max range and ODR.
    * @param range_mm Max detection range to be configured
    * @param interval_ms Interval between samples, in milliseconds
    * @return 0 in case of success
    */
   int free_run(uint16_t range_mm, uint16_t interval_ms);
+  /*!
+   * @brief Starts sensor in trigger mode, with provided max range.
+   * @param range_mm Max detection range to be configured
+   * @return 0 in case of success
+   */
+  int start_trigger(uint16_t range_mm);
+  /*!
+   * @brief Trig sensor measurement.
+   */
+  void trig(void);
   /*!
    * @brief Displays sensor information.
    */
@@ -165,17 +177,20 @@ public:
   void print_configuration(void);
   /*!
    * @brief Get the measured range from a sensor.
+   * @param id Id of the device in the group
    * @return Range in millimeters, or \a CH_NO_TARGET (0xFFFFFFFF) if no target was detected,
    *         or 0 if error
    */
-   float get_range(void);
-protected:
-  /* Descriptor structure for group of sensors */
-  ch_group_t chirp_group;
-  ch_dev_t chirp_device;
-  ch_fw_init_func_t fw_init_func;
-  static const uint32_t default_odr_ms = 100; // 1 measure each 100 ms
-  void clear_data_ready();
+  float get_range(int sensor_id=0);
+  /*!
+   * @brief Triangulate an object using 2 sensors.
+   * @param distance_between_sensors_mm The distance between the 2 sensors in mm
+   * @param x Output object abscissa
+   * @param y Output object ordinate
+   * @param offset 2nd sensor offset in mm 
+   * @return 0 in case of success
+   */
+  int triangulate(const float distance_between_sensors_mm, float& x, float& y, float offset=0);
 };
 
 #endif // CHx01_H

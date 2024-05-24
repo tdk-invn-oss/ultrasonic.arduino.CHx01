@@ -15,24 +15,16 @@
  *
  */
  
- #include "CH201.h"
+#include "CH101_dev.h"
 
-uint8_t CH201::get_iq_data(ch_iq_sample_t (&iq_data)[CH201_MAX_NUM_SAMPLES], uint16_t& nb_samples)
+uint8_t CH101_dev::get_iq_data(ch_iq_sample_t (&iq_data)[CH101_MAX_NUM_SAMPLES], uint16_t& nb_samples)
 {
-  return get_iq_data(0,iq_data,nb_samples);
-}
+  nb_samples  = ch_get_num_samples(this);
 
-uint8_t CH201::get_iq_data(int sensor_id, ch_iq_sample_t (&iq_data)[CH201_MAX_NUM_SAMPLES], uint16_t& nb_samples)
-{
-  CH201_dev* device = (CH201_dev*)get_device(sensor_id);
-  return device->get_iq_data(iq_data,nb_samples);
-}
+  /* Reading I/Q data in normal, blocking mode */
+  uint8_t err = ch_get_iq_data(this, iq_data, 0, nb_samples,
+                        CH_IO_MODE_BLOCK);
+  clear_data_ready();
 
-int CH201::algo_config(int sensor_id)
-{
-  return get_device(sensor_id)->algo_config();
-}
-
-uint16_t CH201::get_max_range(int sensor_id) {
-  return get_device(sensor_id)->get_max_range();
+  return err;
 }

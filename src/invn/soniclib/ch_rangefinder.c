@@ -1,3 +1,20 @@
+/*! \file ch_rangefinder.c
+ *
+ * \brief Chirp SonicLib API range finding function implementations
+ */
+
+/*
+ Copyright 2016-2024, InvenSense, Inc.  All rights reserved.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.
+
+ */
+#define CH_LOG_MODULE_NAME "CH_RANGEFINDER"
+#include <invn/soniclib/ch_log.h>
+
 #include <invn/soniclib/ch_rangefinder.h>
 #include <invn/soniclib/details/ch_common.h>
 #if defined(INCLUDE_SHASTA_SUPPORT)
@@ -435,7 +452,7 @@ uint8_t ch_rangefinder_display_config_info(ch_dev_t *dev_ptr) {
 	ch_err = ch_rangefinder_get_algo_config(dev_ptr, &algo_config);
 	/* Display static target rejection range, if used */
 	if (algo_config.static_range != 0) {
-		printf("static_range=%u samples\r\n", algo_config.static_range);
+		ch_log_printf("static_range=%u samples\r\n", algo_config.static_range);
 	}
 #endif
 
@@ -445,31 +462,55 @@ uint8_t ch_rangefinder_display_config_info(ch_dev_t *dev_ptr) {
 
 	/* Get threshold values in structure */
 	ch_thresholds_t detect_thresholds;
+
+#ifdef INCLUDE_WHITNEY_SUPPORT
 	ch_err = ch_get_thresholds(dev_ptr, &detect_thresholds);
 	if (ch_err) {
 		/*error reading thresholds or thresholds not handled by fw */
 		goto exit_print_cr;
 	}
 
-	printf("\r\n  Detection thresholds:\r\n");
+	ch_log_printf("Detection thresholds:\r\n");
 	for (int thresh_num = 0; thresh_num < dev_ptr->current_fw->max_num_thresholds; thresh_num++) {
 		uint16_t start_sample = detect_thresholds.threshold[thresh_num].start_sample;
-		uint16_t start_mm     = ch_samples_to_mm(dev_ptr, start_sample);
+		uint16_t start_mm     = ch_common_samples_to_mm(dev_ptr, start_sample);
 
 		if ((thresh_num == 0) || (start_sample != 0)) { /* unused thresholds have start = 0 */
-			printf("     %u\tstart sample: %3u  = %4u mm\tlevel: %u", thresh_num, start_sample, start_mm,
-			       detect_thresholds.threshold[thresh_num].level);
-#ifdef INCLUDE_SHASTA_SUPPORT
-			if (detect_thresholds.threshold[thresh_num].level == CH_THRESH_LEVEL_HOLDOFF) {
-				printf(" (Rx Holdoff)");
-			}
-#endif  // INCLUDE_SHASTA_SUPPORT
-			printf("\r\n");
+			ch_log_printf("     %u\tstart sample: %3u  = %4u mm\tlevel: %u", thresh_num, start_sample, start_mm,
+			              detect_thresholds.threshold[thresh_num].level);
+			ch_log_printf("\r\n");
 		}
 	}
+#elif defined(INCLUDE_SHASTA_SUPPORT)
+	ch_log_printf("Detection thresholds:\r\n");
+
+	for (uint8_t meas_num = 0; meas_num < MEAS_QUEUE_MAX_MEAS; meas_num++) {
+		ch_log_printf("  Measurement %u\r\n", meas_num);
+		ch_err = ch_meas_get_thresholds(dev_ptr, meas_num, &detect_thresholds);
+		if (ch_err) {
+			/*error reading thresholds or thresholds not handled by fw */
+			ch_log_printf("     KO\r\n");
+			goto exit_print_cr;
+		}
+
+		for (int thresh_num = 0; thresh_num < dev_ptr->current_fw->max_num_thresholds; thresh_num++) {
+			uint16_t start_sample = detect_thresholds.threshold[thresh_num].start_sample;
+			uint16_t start_mm     = ch_common_meas_samples_to_mm(dev_ptr, meas_num, start_sample);
+
+			if ((thresh_num == 0) || (start_sample != 0)) { /* unused thresholds have start = 0 */
+				ch_log_printf("     %u\tstart sample: %3u  = %4u mm\tlevel: %u", thresh_num, start_sample, start_mm,
+				              detect_thresholds.threshold[thresh_num].level);
+				if (detect_thresholds.threshold[thresh_num].level == CH_THRESH_LEVEL_HOLDOFF) {
+					ch_log_printf(" (Rx Holdoff)");
+				}
+				ch_log_printf("\r\n");
+			}
+		}
+	}
+#endif
 
 exit_print_cr:
-	printf("\r\n");
+	ch_log_printf("\r\n");
 
 	return ch_err;
 }

@@ -55,19 +55,20 @@
  * The second method for providing the symbols is to use the build system
  * define flags. For example, you can use the -D option with gcc. To use this
  * method, you must first define the symbol INVN_SONICLIB_INTERNAL_BOARD_CONFIG.
- * This will cause soniclib to use the board config in <invn/soniclilb/details>.
+ * This will cause soniclib to use the board config in <invn/soniclib/details>.
  * You should not edit this file directly. Instead, to change the value of the
  * symbols defined there, simply override them with -D flags during the build.
  *
  *
  * #### Basic Operating Sequence
  * At a high level, an application using SonicLib will do the following:
- *  -# Initialize the hardware on the board, by calling the BSP's \a chbsp_board_init() function.
- *  -# Initialize the SonicLib data structures, by calling \a ch_init() for each sensor.
+ *  -# Initialize the hardware on the board
+ *  -# Initialize the Soniclib group structures, by calling \a ch_group_init()
+ *  -# Initialize the SonicLib devices structures, by calling \a ch_init() for each sensor.
  *  -# Program and start the sensor(s), by calling \a ch_group_start().
  *  -# Set up a handler function to process interrupts from the sensor.
- *  -# Set up a triggering mechanism using a board timer, using \a chbsp_periodic_timer_init() etc.,
- *  (unless the sensor will be used in free-running mode, in which no external trigger is needed).  A
+ *  -# Set up a triggering mechanism using a board timer, (unless the sensor will be used
+ *  in free-running mode, in which no external trigger is needed).  A
  *  timer handler routine will typically trigger the sensor(s) using \a ch_group_trigger().
  *  -# Configure the sensor's operating range, detection thresholds, and other parameters.
  *  -# Set the sensor mode to enable sensing.
@@ -88,8 +89,7 @@
  *
  * #### Verbose Debug Output
  * To assist with debugging, verbose debug output from various internal SonicLib functions
- * may be enabled by defining `CHDRV_DEBUG` during the system build.  Uncomment the definition
- * near the top of the soniclib.h file.
+ * may be enabled by defining `CH_LOG_MODULE_LEVEL=X` during the system build.
  */
 
 /*
@@ -114,13 +114,7 @@ extern "C" {
 #define SONICLIB_VER_MAJOR  (4)    /*!< SonicLib major version. */
 #define SONICLIB_VER_MINOR  (0)    /*!< SonicLib minor version. */
 #define SONICLIB_VER_REV    (0)    /*!< SonicLib revision. */
-#define SONICLIB_VER_SUFFIX "rc.3" /*!< SonicLib version suffix (contains pre-release info) */
-
-/*==============  Verbose Debug Output Control ===================*/
-/* To enable verbose console messages from internal SonicLib functions during
- * initialization and operation, uncomment the `CHDRV_DEBUG` definition symbol below.
- */
-// #define CHDRV_DEBUG				// uncomment to enable driver debug messages
+#define SONICLIB_VER_SUFFIX "rc.8" /*!< SonicLib version suffix (contains pre-release info) */
 
 /***** DO NOT MODIFY ANY VALUES BEYOND THIS POINT! *****/
 
@@ -138,8 +132,8 @@ typedef struct ch_group_t ch_group_t;
 typedef struct fw_info_st fw_info_t;
 
 /* ICU (second generation) Firmware  */
-#include <invn/icu_interface/shasta_external_regs.h> /* Shasta firmware interface */
 #ifdef INCLUDE_SHASTA_SUPPORT
+#include <invn/icu_interface/shasta_external_regs.h> /* Shasta firmware interface */
 #include <invn/soniclib/details/icu.h>
 #include <invn/icu_interface/icu_algo_info.h> /* ICU sensor algorithm interface */
 #endif
@@ -153,9 +147,6 @@ typedef struct fw_info_st fw_info_t;
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#ifdef CHDRV_DEBUG
-#include <stdio.h>
-#endif
 
 /* Chirp sensor part numbers */
 #define CH101_PART_NUMBER       (101)   /*!< Integer sensor identifier for CH101. */
@@ -166,9 +157,19 @@ typedef struct fw_info_st fw_info_t;
 #define ICU_UNKNOWN_PART_NUMBER (0)     /*!< Integer sensor identifier for unknown ICU sensors. */
 
 /* Max expected number of samples per measurement (actual value depends on sensor f/w used) */
-#define CH101_MAX_NUM_SAMPLES (225)            /*!< Max expected samples per measurement for CH101. */
-#define CH201_MAX_NUM_SAMPLES (450)            /*!< Max expected samples per measurement for CH201. */
-#define ICU_MAX_NUM_SAMPLES   (IQ_SAMPLES_MAX) /*!< Max for ICU sensors, from shasta_external_regs.h */
+#ifdef INCLUDE_WHITNEY_SUPPORT
+
+#define CH101_MAX_NUM_SAMPLES (225) /*!< Max expected samples per measurement for CH101. */
+#define CH201_MAX_NUM_SAMPLES (450) /*!< Max expected samples per measurement for CH201. */
+#define MAX_NUM_SAMPLES       CH201_MAX_NUM_SAMPLES
+
+#endif
+#ifdef INCLUDE_SHASTA_SUPPORT
+
+#define ICU_MAX_NUM_SAMPLES (IQ_SAMPLES_MAX) /*!< Max for ICU sensors, from shasta_external_regs.h */
+#define MAX_NUM_SAMPLES     ICU_MAX_NUM_SAMPLES
+
+#endif
 
 /* Misc definitions */
 #define CH_NO_TARGET     (0xFFFFFFFF) /*!< Range value returned if no target was detected. */
@@ -284,6 +285,7 @@ typedef enum {
 	CH_INTERRUPT_DRIVE_PUSH_PULL  = 1  /*!< Push pull type. */
 } ch_interrupt_drive_t;
 
+#ifdef INCLUDE_SHASTA_SUPPORT
 //! Sensor interrupt types.
 typedef enum {
 	CH_INTERRUPT_TYPE_UNKNOWN     = INT_SRC_NONE,            /*!< 0x0000 - Unknown. */
@@ -301,6 +303,26 @@ typedef enum {
 	CH_INTERRUPT_TYPE_DEBUG       = INT_SRC_DEBUG,           /*!< 0x4000 - Debug interrupt. */
 	CH_INTERRUPT_TYPE_ERROR       = INT_SRC_ERROR            /*!< 0x8000 - Unspecified error. */
 } ch_interrupt_type_t;
+
+//! Output type.
+typedef enum {
+	CH_OUTPUT_IQ         = IQ_OUTPUT_NORMAL,     /*!< (0) - Output I/Q int16_t pair values */
+	CH_OUTPUT_AMP_THRESH = IQ_OUTPUT_MAG_THRESH, /*!< (1) - Output amp + threshold uint16_t pair values */
+	CH_OUTPUT_AMP        = IQ_OUTPUT_MAG         /*!< (2) - Output amplitude uint16_t values only */
+} ch_output_type_t;
+#else
+//! Sensor interrupt types.(Whitney sensors only have one interrupt type)
+typedef enum {
+	CH_INTERRUPT_TYPE_UNKNOWN  = 0x0000,
+	CH_INTERRUPT_TYPE_DATA_RDY = 0x0001,
+} ch_interrupt_type_t;
+
+//! Output type.
+typedef enum {
+	CH_OUTPUT_IQ  = 0, /*!< Output I/Q int16_t pair values */
+	CH_OUTPUT_AMP = 2  /*!< Output amplitude uint16_t values only */
+} ch_output_type_t;
+#endif
 
 //! Target interrupt filter modes.
 typedef enum {
@@ -360,13 +382,6 @@ typedef enum {
 	CH_IO_MODE_BLOCK    = 0, /*!< Blocking mode. */
 	CH_IO_MODE_NONBLOCK = 1  /*!< Non-blocking mode. */
 } ch_io_mode_t;
-
-//! Output type.
-typedef enum {
-	CH_OUTPUT_IQ         = IQ_OUTPUT_NORMAL,     /*!< (0) - Output I/Q int16_t pair values */
-	CH_OUTPUT_AMP_THRESH = IQ_OUTPUT_MAG_THRESH, /*!< (1) - Output amp + threshold uint16_t pair values */
-	CH_OUTPUT_AMP        = IQ_OUTPUT_MAG         /*!< (2) - Output amplitude uint16_t values only */
-} ch_output_type_t;
 
 //! Decimation factor.
 typedef enum {
@@ -552,18 +567,15 @@ typedef struct {
 typedef uint8_t (*ch_get_config_func_t)(ch_dev_t *dev_ptr, ch_config_t *config_ptr);
 typedef uint8_t (*ch_set_config_func_t)(ch_dev_t *dev_ptr, ch_config_t *config_ptr);
 typedef uint8_t (*ch_set_num_samples_func_t)(ch_dev_t *dev_ptr, uint16_t num_samples);
-typedef uint8_t (*ch_set_max_range_func_t)(ch_dev_t *dev_ptr, uint16_t max_range);
 typedef uint8_t (*ch_set_sample_window_func_t)(ch_dev_t *dev_ptr, uint16_t start_sample, uint16_t end_sample);
 typedef uint32_t (*ch_get_range_func_t)(ch_dev_t *dev_ptr, ch_range_t range_type);
 typedef uint16_t (*ch_get_amplitude_func_t)(ch_dev_t *dev_ptr);
 typedef uint16_t (*ch_get_amplitude_avg_func_t)(ch_dev_t *dev_ptr);
 typedef uint8_t (*ch_set_frequency_func_t)(ch_dev_t *dev_ptr, uint32_t target_freq_Hz);
-typedef uint32_t (*ch_get_frequency_func_t)(ch_dev_t *dev_ptr);
 typedef uint8_t (*ch_get_iq_data_func_t)(ch_dev_t *dev_ptr, ch_iq_sample_t *buf_ptr, uint16_t start_sample,
                                          uint16_t num_samples, ch_io_mode_t io_mode);
 typedef uint8_t (*ch_get_amplitude_data_func_t)(ch_dev_t *dev_ptr, uint16_t *buf_ptr, uint16_t start_sample,
                                                 uint16_t num_samples, ch_io_mode_t io_mode);
-typedef uint16_t (*ch_samples_to_mm_func_t)(ch_dev_t *dev_ptr, uint16_t num_samples);
 typedef uint16_t (*ch_mm_to_samples_func_t)(ch_dev_t *dev_ptr, uint16_t num_mm);
 typedef uint8_t (*ch_set_target_interrupt_func_t)(ch_dev_t *dev_ptr, ch_tgt_int_filter_t tgt_int_filter);
 typedef ch_tgt_int_filter_t (*ch_get_target_interrupt_func_t)(ch_dev_t *dev_ptr);
@@ -575,30 +587,29 @@ typedef uint8_t (*ch_set_rx_low_gain_func_t)(ch_dev_t *dev_ptr, uint16_t num_sam
 typedef uint16_t (*ch_get_rx_low_gain_func_t)(ch_dev_t *dev_ptr);
 typedef uint8_t (*ch_set_tx_length_func_t)(ch_dev_t *dev_ptr, uint16_t tx_length);
 typedef uint16_t (*ch_get_tx_length_func_t)(ch_dev_t *dev_ptr);
-typedef uint8_t (*ch_get_rx_pulse_length_func_t)(ch_dev_t *dev_ptr);
 typedef uint8_t (*ch_set_cal_result_func_t)(ch_dev_t *dev_ptr, ch_cal_result_t *cal_ptr);
 typedef uint8_t (*ch_get_cal_result_func_t)(ch_dev_t *dev_ptr, ch_cal_result_t *cal_ptr);
 typedef uint8_t (*ch_set_data_output_func_t)(ch_dev_t *dev_ptr, const ch_output_t *output);
 typedef void (*ch_trigger_soft_func_t)(ch_dev_t *dev_ptr);
-typedef ch_meas_status_t (*ch_meas_get_status_func_t)(ch_dev_t *dev_ptr, uint8_t meas_num);
-typedef ch_output_type_t (*ch_meas_get_iq_output_func_t)(ch_dev_t *dev_ptr, uint8_t meas_num);
-typedef uint8_t (*ch_meas_set_iq_output_func_t)(ch_dev_t *dev_ptr, uint8_t meas_num, ch_output_type_t output_format);
 typedef uint8_t (*ch_set_data_ready_delay_func_t)(ch_dev_t *dev_ptr, uint8_t num_cycles);
 typedef uint8_t (*ch_get_data_ready_delay_func_t)(ch_dev_t *dev_ptr);
+typedef ch_meas_status_t (*ch_meas_get_status_func_t)(ch_dev_t *dev_ptr, uint8_t meas_num);
+
+#ifdef INCLUDE_SHASTA_SUPPORT
+typedef ch_output_type_t (*ch_meas_get_iq_output_func_t)(ch_dev_t *dev_ptr, uint8_t meas_num);
+typedef uint8_t (*ch_meas_set_iq_output_func_t)(ch_dev_t *dev_ptr, uint8_t meas_num, ch_output_type_t output_format);
+#endif
 
 //! API function pointer structure (internal use).
 typedef struct {
 	ch_set_num_samples_func_t set_num_samples;
-	ch_set_max_range_func_t set_max_range;
 	ch_set_sample_window_func_t set_sample_window;
 	ch_get_range_func_t get_range;
 	ch_get_amplitude_func_t get_amplitude;
 	ch_get_amplitude_avg_func_t get_amplitude_avg;
 	ch_set_frequency_func_t set_frequency;
-	ch_get_frequency_func_t get_frequency;
 	ch_get_iq_data_func_t get_iq_data;
 	ch_get_amplitude_data_func_t get_amplitude_data;
-	ch_samples_to_mm_func_t samples_to_mm;
 	ch_mm_to_samples_func_t mm_to_samples;
 	ch_set_target_interrupt_func_t set_target_interrupt;
 	ch_get_target_interrupt_func_t get_target_interrupt;
@@ -608,16 +619,17 @@ typedef struct {
 	ch_get_rx_low_gain_func_t get_rx_low_gain;
 	ch_set_tx_length_func_t set_tx_length;
 	ch_get_tx_length_func_t get_tx_length;
-	ch_get_rx_pulse_length_func_t get_rx_pulse_length;
 	ch_set_cal_result_func_t set_cal_result;
 	ch_get_cal_result_func_t get_cal_result;
 	ch_set_data_output_func_t set_data_output;
 	ch_trigger_soft_func_t trigger_soft;
-	ch_meas_get_status_func_t meas_get_status;
-	ch_meas_get_iq_output_func_t meas_get_iq_output;
-	ch_meas_set_iq_output_func_t meas_set_iq_output;
 	ch_set_data_ready_delay_func_t set_data_ready_delay;
 	ch_get_data_ready_delay_func_t get_data_ready_delay;
+	ch_meas_get_status_func_t meas_get_status;
+#ifdef INCLUDE_SHASTA_SUPPORT
+	ch_meas_get_iq_output_func_t meas_get_iq_output;
+	ch_meas_set_iq_output_func_t meas_set_iq_output;
+#endif
 	// Range finding specific
 	const void *algo_specific_api;
 } ch_api_funcs_t;
@@ -701,7 +713,6 @@ struct ch_group_t {
 	                                                     \a chbsp_get_i2c_info()*/
 	uint16_t rtc_cal_pulse_ms;                      /*!< Real-time clock calibration pulse length (in ms) */
 	uint16_t pretrig_delay_us;                      /*!< Pre-trigger delay for rx-only sensors (in us) */
-	chdrv_discovery_hook_t disco_hook;              /*!< Addr of hook routine to call when device found on bus */
 	ch_io_int_callback_t io_int_callback;           /*!< Addr of routine to call when sensor interrupts */
 	ch_io_complete_callback_t io_complete_callback; /*!< Addr of routine to call when non-blocking I/O
 	                                                     completes */
@@ -794,6 +805,26 @@ struct ch_dev_t {
 /*==============  API function prototypes and documentation ===================*/
 
 /*!
+ * \brief Initialize the group descriptor for a group of sensors.
+ *
+ * \param grp_ptr 			pointer to the ch_group_t descriptor for sensor group to join
+ * \param num_devices		number of the device within the sensor group
+ * \param num_devices		number of the buses the sensors use
+ * \param rtc_cal_pulse_ms	Length of the pulse used to calibrate the sensors RTC
+ *
+ * \return 0 if success, 1 if error
+ *
+ * This function is used to initialize few group structure field before initializing sensors
+ *
+ * Generally, an application will require only one ch_group_t structure to manage all Chirp sensors.
+ *
+ * \note This function only performs internal initialization of data structures, etc.  It does not
+ * actually initialize the physical sensor device(s).  See \a ch_group_start(), \a ch_restart(),
+ * and \a ch_group_restart().
+ */
+uint8_t ch_group_init(ch_group_t *grp_ptr, uint8_t num_devices, uint8_t num_buses, uint16_t rtc_cal_pulse_ms);
+
+/*!
  * \brief Initialize the device descriptor for a sensor.
  *
  * \param dev_ptr 		pointer to the ch_dev_t descriptor structure
@@ -813,8 +844,7 @@ struct ch_dev_t {
  * ch_group_t structure describing the sensor group that will include the new sensor.  Both the ch_dev_t
  * structure and the ch_group_t structure must have already been allocated before this function is called.
  *
- * Generally, an application will require only one ch_group_t structure to manage all Chirp sensors.
- * However, a separate ch_dev_t structure must be allocated for each sensor.
+ * A separate ch_dev_t structure must be allocated for each sensor.
  *
  * \a dev_num is a simple index value that uniquely identifies a sensor within a group.  Each possible
  * sensor (i.e. each physical port on the board that could have a Chirp sensor attached) has a number,
@@ -1133,7 +1163,7 @@ uint8_t ch_get_bus(ch_dev_t *dev_ptr);
  * The version number consists of three x.y.z fields: <major>.<minor>.<rev>
  *
  * - \a Major versions are infrequent architectural releases that may include
- * fundamental changes to interfaces and other compatibilty issues.
+ * fundamental changes to interfaces and other compatiblity issues.
  * - \a Minor releases introduce new features and may include minor changes to
  * individual interfaces, but are generally backwards compatible.
  * - \a Revision releases include bug fixes and other changes that do not
@@ -1194,7 +1224,7 @@ uint8_t ch_set_mode(ch_dev_t *dev_ptr, ch_mode_t mode);
  * \param dev_ptr 	pointer to the ch_dev_t descriptor structure
  * \return 			Interval between samples (in ms), or 0 if device is not in free-running mode
  *
- * \note This function is DEPRECATED and is provided only for backwards compatibilty.  New
+ * \note This function is DEPRECATED and is provided only for backwards compatiblity.  New
  * applications should use the equivalent \a ch_get_freerun_interval() function.
  *
  * This function returns the interval between measurements, in milliseconds, for
@@ -1244,7 +1274,7 @@ uint32_t ch_get_freerun_interval_us(ch_dev_t *dev_ptr);
  *
  * See also \a ch_get_freerun_interval_us(), \a ch_get_freerun_interval_ticks().
  */
-uint32_t ch_get_freerun_interval_ticks(ch_dev_t *dev_ptr);
+uint16_t ch_get_freerun_interval_ticks(ch_dev_t *dev_ptr);
 
 /*!
  * \brief Set the internal sensing interval (deprecated).
@@ -1671,7 +1701,7 @@ uint32_t ch_get_frequency(ch_dev_t *dev_ptr);
  * When a group of sensors are used in paired pitch/catch operation, it is often
  * helpful to set them to a common acoustic operating frequency.  A better frequency
  * match between the transmitting and receiving sensors improves the range and
- * reliablity.
+ * reliability.
  *
  * All sensors in the group must be the same production model (part number).  It
  * is not possible to set the frequency to a value that is outside the
@@ -1744,7 +1774,7 @@ uint16_t ch_get_rtc_cal_result(ch_dev_t *dev_ptr);
  * This function returns the length (duration), in milliseconds, of the the real-time clock (RTC)
  * calibration pulse used for the sensor.  The pulse is applied to the sensor's INT line during
  * \a ch_group_start() to calibrate the sensor's internal clock.  The pulse length is specified by
- * the board support package during the \a chbsp_board_init() function.
+ * the board support package during the \a ch_group_init() function.
  *
  * The RTC calibration pulse length is used internally in calculations that convert between time
  * and distance.
@@ -1804,7 +1834,7 @@ uint16_t ch_get_scale_factor(ch_dev_t *dev_ptr);
  *
  * To determine what sample number corresponds to a physical distance, use \a ch_mm_to_samples().
  *
- * To allow more flexibilty in your application, the I/Q data readout from the device may be done
+ * To allow more flexibility in your application, the I/Q data readout from the device may be done
  * in a non-blocking mode, by setting \a mode to \a CH_IO_MODE_NONBLOCK (1).  In non-blocking
  * mode, the I/O operation takes place using DMA access in the background.  This function will
  * return immediately, and a notification will later be issued when the I/Q has been read.  To
@@ -1945,7 +1975,7 @@ uint8_t ch_get_amplitude_data(ch_dev_t *dev_ptr, uint16_t *buf_ptr, uint16_t sta
  * This function is similar to \a ch_get_amplitude_data(), except that the data values each
  * contains a 16-bit unsigned threshold value in addition to the 16-bit unsigned sample amplitude.
  * The threshold value is the required amplitude at that sample offset to detect a target object,
- * as set by ch_set_thesholds().  This output format may be useful in tuning and debugging the
+ * as set by ch_set_thresholds().  This output format may be useful in tuning and debugging the
  * detection threshold values.
  *
  * Each output sample consists of a ch_amp_thresh_t structure, containing one unsigned 16-bit
@@ -2213,7 +2243,7 @@ ch_tgt_int_filter_t ch_get_target_interrupt(ch_dev_t *dev_ptr);
  * specifying \a CH_TGT_INT_FILTER_COUNTER as the filter type.
  *
  * When the counter filter is used, a certain threshold number of positive target detections must
- * be observered within a specified number of measurements in order for an interrupt to
+ * be observed within a specified number of measurements in order for an interrupt to
  * be generated by the sensor.
  *
  * \a meas_hist specifies the number of previous measurements that will be included
@@ -2335,7 +2365,7 @@ ch_interrupt_mode_t ch_get_interrupt_mode(ch_dev_t *dev_ptr);
  * push-pull drive.
  *
  * \note This option is only available for ICU sensors.  CH101 and CH201 sensors
- * always use active-high, pull low interupts.  Attempting to set \a drive to
+ * always use active-high, pull low interrupts.  Attempting to set \a drive to
  * CH_INTERRUPT_MODE_PUSH_PULL on a CH101 or CH201 will return an error.
  */
 uint8_t ch_set_interrupt_drive(ch_dev_t *dev_ptr, ch_interrupt_drive_t drive);
@@ -2485,19 +2515,6 @@ uint8_t ch_set_tx_length(ch_dev_t *dev_ptr, uint16_t num_cycles);
  * \note This feature is only available in select Chirp sensor firmware versions.
  */
 uint16_t ch_get_tx_length(ch_dev_t *dev_ptr);
-
-/*!
- * \brief Get the detected length of the received ultrasound pulse.
- *
- * \param dev_ptr 	pointer to the ch_dev_t descriptor structure
- *
- * \return pulse length
- *
- * This function gets the detected length of the received ultrasonic pulse.
- *
- * \note This function is only available in select Chirp sensor firmware versions.
- */
-uint8_t ch_get_rx_pulse_length(ch_dev_t *dev_ptr);
 
 /*!
  * \brief Enable/disable receive-only sensor pre-triggering.
@@ -2726,7 +2743,7 @@ uint16_t ch_cycles_to_samples(uint32_t num_cycles, ch_odr_t odr);
  *
  * See also \a ch_ticks_to_usec(), ch_set_rtc().
  */
-uint32_t ch_usec_to_ticks(ch_dev_t *dev_ptr, uint32_t num_usec);
+uint16_t ch_usec_to_ticks(ch_dev_t *dev_ptr, uint32_t num_usec);
 
 /*!
  * \brief Convert sensor RTC clock ticks to microseconds.
@@ -2741,7 +2758,7 @@ uint32_t ch_usec_to_ticks(ch_dev_t *dev_ptr, uint32_t num_usec);
  *
  * See also \a ch_usec_to_ticks(), \a ch_set_rtc().
  */
-uint32_t ch_ticks_to_usec(ch_dev_t *dev_ptr, uint32_t num_ticks);
+uint32_t ch_ticks_to_usec(ch_dev_t *dev_ptr, uint16_t num_ticks);
 
 #ifdef INCLUDE_SHASTA_SUPPORT
 
@@ -4034,7 +4051,7 @@ void ch_group_set_pmut_clock_freq(ch_group_t *grp_ptr, uint32_t pmut_clock_freq)
  * from an independent signal source.  (See \a ch_set_pmut_clock().)
  *
  * This function returns the frequency of the group PMUT clock signal, in Hz,
- * regardless of its source.  The returned freqency will be zero if no sensor
+ * regardless of its source.  The returned frequency will be zero if no sensor
  * is outputting a clock signal and no independent clock rate has been specified
  * using \a ch_set_pmut_clock_freq().
  *

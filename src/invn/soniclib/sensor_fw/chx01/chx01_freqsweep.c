@@ -39,11 +39,9 @@ static const ch_rangefinder_api_funcs_t algo_api_funcs = {
 
 static const ch_api_funcs_t api_funcs = {
 		.set_num_samples   = ch_common_set_num_samples,
-		.set_max_range     = ch_common_set_max_range,
 		.get_range         = chx01_freqsweep_get_range,
 		.get_amplitude     = chx01_freqsweep_get_amplitude,
 		.get_iq_data       = (ch_get_iq_data_func_t)chx01_freqsweep_get_iq_data,
-		.samples_to_mm     = ch_common_samples_to_mm,
 		.mm_to_samples     = ch_common_mm_to_samples,
 		.algo_specific_api = &algo_api_funcs,
 };

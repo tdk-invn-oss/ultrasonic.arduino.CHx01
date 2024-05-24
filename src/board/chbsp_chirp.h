@@ -17,15 +17,14 @@
 
 #include <invn/soniclib/chirp_bsp.h>
 #include "Wire.h"
+#include "CHx01.h"
 
 #ifndef CHBSP_CHIRP_H
 #define CHBSP_CHIRP_H
 
-#define UNUSED_PIN (0xFF)
-#define DEFAULT_I2C_CLOCK 400000
-#define MAX_I2C_CLOCK 400000
 
-void chbsp_module_init(TwoWire &i2c_ref, uint8_t int1_id, uint8_t int_dir_id, uint8_t rst_id, uint8_t prog_id, bool rst_n);
 
+void chbsp_module_init(int rst_id, bool rst_n);
+void board_init(CHx01 *grp_ptr);
 
 #endif

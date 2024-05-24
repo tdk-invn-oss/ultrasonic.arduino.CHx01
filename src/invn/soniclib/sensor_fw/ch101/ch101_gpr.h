@@ -23,6 +23,10 @@
 #ifndef CH101_GPR_H_
 #define CH101_GPR_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include "ch101.h"
 #include <invn/soniclib/ch_rangefinder.h>
@@ -60,5 +64,9 @@ uint16_t get_ch101_gpr_fw_ram_init_size(void);
 const unsigned char *get_ram_ch101_gpr_init_ptr(void);
 
 uint8_t ch101_gpr_init(ch_dev_t *dev_ptr, fw_info_t **fw_info);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

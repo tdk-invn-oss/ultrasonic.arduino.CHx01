@@ -16,6 +16,7 @@
  */
 
 #include "Arduino.h"
+#include "Wire.h"
 #include <stdint.h>
 #include "chbsp_chirp.h"
 
@@ -23,69 +24,36 @@
 #include <invn/soniclib/chirp_bsp.h>
 #include <invn/soniclib/soniclib.h>
 
-#define CHX01_INT_DIR_OUT (1)
-#define CHX01_INT_DIR_IN  (0)
-
-#define CHBSP_RTC_CAL_PULSE_MS       (100)
-
 #define ARDUINO_I2C_BUFFER_LENGTH 32
 
-static TwoWire* i2c = NULL;
-static const uint8_t chx01_i2c_addrs[] = {0x2D, 0x2C, 0x2B, 0x2A};
+CHx01* sensor_group_ptr = NULL;
+static int rst_pin_id;
+static int reset_n;
+static void int1_0_handler(void);
+static void int1_1_handler(void);
+const chx01_dev_irq_handler *irq_handlers[2] = {int1_0_handler, int1_1_handler};
 
-static uint8_t int1_pin_id;
-static uint8_t int_dir_pin_id;
-static uint8_t rst_pin_id;
-static uint8_t prog_pin_id;
-static bool reset_n = true;
-static ch_group_t *sensor_group_ptr = NULL;
 
-static bool int1_attached = false;
-static bool int1_in_dir = false;
-
-static void int1_handler(void);
-
-static void sensors_pin_init(ch_dev_t *dev_ptr)
+extern "C" int chbsp_i2c_init(void)
 {
-  /* Configure INT pins as input */
-  chbsp_set_int1_dir_in(dev_ptr);
-
-  /* Enable pull-ups on the INT pins */
-  pinMode(int1_pin_id, INPUT_PULLUP);
-
-  /* Configure INT DIR pin as output */
-  if(int_dir_pin_id != UNUSED_PIN)
-  {
-    pinMode(int_dir_pin_id, OUTPUT);
-    digitalWrite(int_dir_pin_id,CHX01_INT_DIR_IN);
-  }
-  /* TODO: manage inversion or not on board */
-  /* Configure Reset pin as output, set to 1 (Reset enabled, inverted to RST_N on the board) */
-  pinMode(rst_pin_id, OUTPUT);
-  digitalWrite(rst_pin_id,HIGH);
-
-  /* Configure Prog pin as output, set to 0 */
-  pinMode(prog_pin_id, OUTPUT);
-  digitalWrite(prog_pin_id,LOW);
-
-}
-
-int chbsp_i2c_init(void)
-{
-  i2c->begin();
-  i2c->setClock(DEFAULT_I2C_CLOCK);
+  Wire.begin();
+  Wire.setClock(DEFAULT_I2C_CLOCK);
   return 0;
 }
 
-void chbsp_i2c_reset(ch_dev_t *dev_ptr)
+void chbsp_module_init(int rst_id, bool rst_n)
 {
-  /* Not sure Arduino support I2C bus reset... */
-  (void)dev_ptr;
-  i2c->begin();
-  i2c->setClock(DEFAULT_I2C_CLOCK);
+  rst_pin_id = rst_id;
+  reset_n = rst_n;
 }
 
-static void int1_handler(void)
+extern "C" void chbsp_i2c_reset(ch_dev_t *dev_ptr)
+{
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  device->i2c_reset();
+}
+
+static void int1_0_handler(void)
 {
   if(sensor_group_ptr != NULL)
   {
@@ -94,100 +62,88 @@ static void int1_handler(void)
     chbsp_int1_interrupt_enable(ch_get_dev_ptr(sensor_group_ptr, 0));
   }
 }
-
-void chbsp_module_init(TwoWire &i2c_ref, uint8_t int1_id, uint8_t int_dir_id, uint8_t rst_id, uint8_t prog_id, bool rst_n)
+static void int1_1_handler(void)
 {
-  i2c = &i2c_ref;
-  int1_pin_id = int1_id;
-  int_dir_pin_id = int_dir_id;
-  rst_pin_id = rst_id;
-  prog_pin_id = prog_id;
-  reset_n = rst_n;
+  if(sensor_group_ptr != NULL)
+  {
+    ch_interrupt(sensor_group_ptr, 1);
+    // Data ready handler disables interrupt, make it ready to fire again !
+    chbsp_int1_interrupt_enable(ch_get_dev_ptr(sensor_group_ptr, 1));
+  }
 }
 
-void chbsp_board_init(ch_group_t *grp_ptr)
+void board_init(CHx01 *grp_ptr)
 {
   /* Make local copy of group pointer */
   sensor_group_ptr = grp_ptr;
 
-  /* Initialize group descriptor */
-  grp_ptr->num_ports = 1;
-  grp_ptr->num_buses = 1;
-  grp_ptr->rtc_cal_pulse_ms = CHBSP_RTC_CAL_PULSE_MS;
-  grp_ptr->disco_hook = NULL;
-
-  chbsp_i2c_init();
-
-  sensors_pin_init(grp_ptr->device[0]);
+  /* Configure Reset pin as output, set to 1 (Reset enabled, inverted to RST_N on the board) */
+  pinMode(rst_pin_id, OUTPUT);
+  digitalWrite(rst_pin_id,reset_n?LOW:HIGH);
 }
 
-void chbsp_set_int1_dir_out(ch_dev_t *dev_ptr)
+extern "C" void chbsp_set_int1_dir_out(ch_dev_t *dev_ptr)
 {
-  if(int1_in_dir)
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  device->set_int1_dir(CHX01_INT_DIR_OUT);
+
+}
+
+extern "C" void chbsp_set_int1_dir_in(ch_dev_t *dev_ptr)
+{
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  device->set_int1_dir(CHX01_INT_DIR_IN);
+}
+
+extern "C" void chbsp_int1_clear(ch_dev_t *dev_ptr)
+{
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  device->set_int1(LOW);
+}
+
+extern "C" void chbsp_int1_set(ch_dev_t *dev_ptr)
+{
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  device->set_int1(HIGH);
+}
+
+extern "C" void chbsp_int1_interrupt_enable(ch_dev_t *dev_ptr)
+{
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+
+  if(device->io_index < CHIRP_MAX_NUM_SENSORS)
   {
-    if(int_dir_pin_id != UNUSED_PIN)
-    {
-      digitalWrite(int_dir_pin_id,CHX01_INT_DIR_OUT);
-    }
-    pinMode(int1_pin_id,OUTPUT);
-    int1_in_dir = false;
+    device->enableInterrupt(irq_handlers[device->io_index]);
   }
 }
 
-void chbsp_set_int1_dir_in(ch_dev_t *dev_ptr)
+extern "C" void chbsp_int1_interrupt_disable(ch_dev_t *dev_ptr)
 {
-  if(!int1_in_dir)
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  device->disableInterrupt();
+}
+
+extern "C" uint8_t chbsp_i2c_get_info(ch_group_t* grp_ptr, uint8_t io_index, ch_i2c_info_t *info_ptr)
+{
+  CHx01* group_ptr = (CHx01*)grp_ptr;
+  CHx01_dev* device = group_ptr->get_device(io_index);
+  if(device != NULL)
   {
-    if(int_dir_pin_id != UNUSED_PIN)
-    {
-      digitalWrite(int_dir_pin_id,CHX01_INT_DIR_IN);
-    }
-    pinMode(int1_pin_id,INPUT_PULLUP);
-    int1_in_dir = true;
+    info_ptr->address   = device->get_i2c_addr();
+    /* All sensors on same bus */
+    info_ptr->bus_num   = 0;
+    info_ptr->drv_flags = 0; /* no special I2C handling by SonicLib driver is needed */
+    return 0;
   }
+  return -1;
 }
 
-void chbsp_int1_clear(ch_dev_t *dev_ptr)
+extern "C" int chbsp_i2c_write(ch_dev_t *dev_ptr, const uint8_t *data, uint16_t num_bytes)
 {
-    digitalWrite(int1_pin_id,LOW);
-}
-
-void chbsp_int1_set(ch_dev_t *dev_ptr)
-{
-    digitalWrite(int1_pin_id,HIGH);
-}
-
-void chbsp_int1_interrupt_enable(ch_dev_t *dev_ptr)
-{
-  if (!int1_attached) {
-    chbsp_set_int1_dir_in(dev_ptr);
-
-    attachInterrupt(digitalPinToInterrupt(int1_pin_id),int1_handler,FALLING);
-    int1_attached = true;
-  }
-}
-
-void chbsp_int1_interrupt_disable(ch_dev_t *dev_ptr)
-{
-  if (int1_attached) {
-    detachInterrupt(digitalPinToInterrupt(int1_pin_id));
-    int1_attached = false;
-  }
-}
-
-uint8_t chbsp_i2c_get_info(ch_group_t __attribute__((unused)) * grp_ptr, uint8_t io_index, ch_i2c_info_t *info_ptr)
-{
-
-  info_ptr->address   = chx01_i2c_addrs[io_index];
-  /* All sensors on same bus */
-  info_ptr->bus_num   = 0;
-  info_ptr->drv_flags = 0; /* no special I2C handling by SonicLib driver is needed */
-  return 0;
-}
-
-int chbsp_i2c_write(ch_dev_t __attribute__((unused)) *dev_ptr, uint8_t *data, uint16_t num_bytes)
-{
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  TwoWire* i2c = device->get_i2c();
   uint16_t offset = 0;
+  
   while(offset < num_bytes)
   {
     i2c->beginTransmission(ch_get_i2c_address(dev_ptr));
@@ -200,10 +156,12 @@ int chbsp_i2c_write(ch_dev_t __attribute__((unused)) *dev_ptr, uint8_t *data, ui
   return 0;
 }
 
-int chbsp_i2c_read(ch_dev_t __attribute__((unused)) *dev_ptr, uint8_t *data, uint16_t num_bytes)
+extern "C" int chbsp_i2c_read(ch_dev_t *dev_ptr, uint8_t *data, uint16_t num_bytes)
 {
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  TwoWire* i2c = device->get_i2c();
   uint16_t offset = 0;
-  
+
   while(offset < num_bytes)
   {
     uint16_t rx_bytes = 0;
@@ -228,8 +186,11 @@ int chbsp_i2c_read(ch_dev_t __attribute__((unused)) *dev_ptr, uint8_t *data, uin
   }
 }
 
-int chbsp_i2c_mem_write(ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uint16_t num_bytes)
+extern "C" int chbsp_i2c_mem_write(ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uint16_t num_bytes)
 {
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  TwoWire* i2c = device->get_i2c();
+  
   i2c->beginTransmission(ch_get_i2c_address(dev_ptr));
   i2c->write((uint8_t)mem_addr);
   /* TODO: the doc says we should send num_bytes here */
@@ -240,14 +201,16 @@ int chbsp_i2c_mem_write(ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uin
   return 0;
 }
 
-int chbsp_i2c_mem_read(ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uint16_t num_bytes)
+extern "C" int chbsp_i2c_mem_read(ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uint16_t num_bytes)
 {
+  CHx01_dev* device = (CHx01_dev*)dev_ptr;
+  TwoWire* i2c = device->get_i2c();
   uint16_t rx_bytes = 0;
   i2c->beginTransmission(ch_get_i2c_address(dev_ptr));
   i2c->write((uint8_t)mem_addr);
   /* TODO: the doc says we should send num_bytes here */
   i2c->endTransmission(false);
-  
+
   i2c->beginTransmission(ch_get_i2c_address(dev_ptr));
   rx_bytes = i2c->requestFrom((int)ch_get_i2c_address(dev_ptr), num_bytes);
   if (rx_bytes == num_bytes) {
@@ -261,68 +224,87 @@ int chbsp_i2c_mem_read(ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uint
   }
 }
 
-
-void chbsp_reset_assert(void)
+extern "C" void chbsp_reset_assert(void)
 {
   /* CHX01_RST_N = 0 */
   digitalWrite(rst_pin_id,reset_n ? LOW : HIGH);
 }
 
-void chbsp_reset_release(void)
+extern "C" void chbsp_reset_release(void)
 {
   /* CHX01_RST_N = 1 */
   digitalWrite(rst_pin_id,reset_n ? HIGH : LOW);
 }
 
-void chbsp_program_enable(ch_dev_t *dev_ptr)
+extern "C" void chbsp_program_enable(ch_dev_t *dev_ptr)
 {
-  digitalWrite(prog_pin_id,HIGH);
+  ((CHx01_dev*)dev_ptr)->set_prog(HIGH);
 }
 
-void chbsp_program_disable(ch_dev_t *dev_ptr)
+extern "C" void chbsp_program_disable(ch_dev_t *dev_ptr)
 {
-  digitalWrite(prog_pin_id,LOW);
+  ((CHx01_dev*)dev_ptr)->set_prog(LOW);
 }
 
-void chbsp_delay_us(uint32_t us)
+extern "C" void chbsp_delay_us(uint32_t us)
 {
     delayMicroseconds(us);
 }
 
-void chbsp_delay_ms(uint32_t ms)
+extern "C" void chbsp_delay_ms(uint32_t ms)
 {
   delay(ms);
 }
 
-void chbsp_group_set_int1_dir_out(ch_group_t *grp_ptr)
+extern "C" void chbsp_group_set_int1_dir_out(ch_group_t *grp_ptr)
 {
-  chbsp_set_int1_dir_out(ch_get_dev_ptr(grp_ptr, 0));
+  for(int i = 0; i < grp_ptr->num_ports; i++)
+  {
+    chbsp_set_int1_dir_out(ch_get_dev_ptr(grp_ptr, i));
+  }
 }
 
-void chbsp_group_set_int1_dir_in(ch_group_t *grp_ptr)
+extern "C" void chbsp_group_set_int1_dir_in(ch_group_t *grp_ptr)
 {
-  chbsp_set_int1_dir_in(ch_get_dev_ptr(grp_ptr, 0));
+  for(int i = 0; i < grp_ptr->num_ports; i++)
+  {
+    chbsp_set_int1_dir_in(ch_get_dev_ptr(grp_ptr, i));
+  }
 }
 
-void chbsp_group_int1_clear(ch_group_t *grp_ptr)
+extern "C" void chbsp_group_int1_clear(ch_group_t *grp_ptr)
 {
-  chbsp_int1_clear(ch_get_dev_ptr(grp_ptr, 0));
+  for(int i = 0; i < grp_ptr->num_ports; i++)
+  {
+    chbsp_int1_clear(ch_get_dev_ptr(grp_ptr, i));
+  }
 }
 
-void chbsp_group_int1_set(ch_group_t *grp_ptr)
+extern "C" void chbsp_group_int1_set(ch_group_t *grp_ptr)
 {
-  chbsp_int1_set(ch_get_dev_ptr(grp_ptr, 0));
-}
-void chbsp_group_int1_interrupt_enable(ch_group_t *grp_ptr)
-{
-  chbsp_int1_interrupt_enable(ch_get_dev_ptr(grp_ptr, 0));
-}
-void chbsp_group_int1_interrupt_disable(ch_group_t *grp_ptr)
-{
-  chbsp_int1_interrupt_disable(ch_get_dev_ptr(grp_ptr, 0));
+  for(int i = 0; i < grp_ptr->num_ports; i++)
+  {
+    chbsp_int1_set(ch_get_dev_ptr(grp_ptr, i));
+  }
 }
 
-uint32_t chbsp_timestamp_ms(void)
+extern "C" void chbsp_group_int1_interrupt_enable(ch_group_t *grp_ptr)
+{
+  for(int i = 0; i < grp_ptr->num_ports; i++)
+  {
+    chbsp_int1_interrupt_enable(ch_get_dev_ptr(grp_ptr, i));
+  }
+}
+
+extern "C" void chbsp_group_int1_interrupt_disable(ch_group_t *grp_ptr)
+{
+  for(int i = 0; i < grp_ptr->num_ports; i++)
+  {
+    chbsp_int1_interrupt_disable(ch_get_dev_ptr(grp_ptr, i));
+  }
+}
+
+extern "C" uint32_t chbsp_timestamp_ms(void)
 {
   return (uint32_t) millis();
 }

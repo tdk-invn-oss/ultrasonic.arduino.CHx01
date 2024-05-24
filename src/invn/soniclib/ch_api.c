@@ -21,7 +21,15 @@
 #include <invn/soniclib/details/ch_common.h>
 #include <invn/soniclib/details/ch_driver.h>
 #include <invn/soniclib/chirp_bsp.h>
+#include <invn/soniclib/ch_log.h>
 #include <invn/soniclib/details/ch_math_utils.h>
+
+uint8_t ch_group_init(ch_group_t *grp_ptr, uint8_t num_devices, uint8_t num_buses, uint16_t rtc_cal_pulse_ms) {
+	grp_ptr->num_ports        = num_devices;
+	grp_ptr->num_buses        = num_buses;
+	grp_ptr->rtc_cal_pulse_ms = rtc_cal_pulse_ms;
+	return 0;
+}
 
 /*!
  * \brief Initialize a Chirp ultrasonic sensor descriptor structure
@@ -155,13 +163,18 @@ void ch_trigger(ch_dev_t *dev_ptr) {
 }
 
 void ch_trigger_soft(ch_dev_t *dev_ptr) {
-	ch_trigger_soft_func_t func_ptr = dev_ptr->current_fw->api_funcs->trigger_soft;
-
+#ifdef INCLUDE_SHASTA_SUPPORT
 	if (dev_ptr->asic_gen == CH_ASIC_GEN_2_SHASTA) {
 		chdrv_event_trigger(dev_ptr, EVENT_SW_TRIG);
-	} else if (func_ptr != NULL) {  // CH101 and CH201 support depends on f/w type
-		(*func_ptr)(dev_ptr);
 	}
+#elif defined(INCLUDE_WHITNEY_SUPPORT)
+	if (dev_ptr->asic_gen == CH_ASIC_GEN_1_WHITNEY) {
+		ch_trigger_soft_func_t func_ptr = dev_ptr->current_fw->api_funcs->trigger_soft;
+		if (func_ptr != NULL) {  // CH101 and CH201 support depends on f/w type
+			(*func_ptr)(dev_ptr);
+		}
+	}
+#endif
 }
 
 void ch_set_trigger_type(ch_dev_t *dev_ptr, ch_trigger_type_t trig_type) {
@@ -181,11 +194,16 @@ void ch_group_trigger(ch_group_t *grp_ptr) {
 
 void ch_reset(ch_dev_t *dev_ptr, ch_reset_t reset_type) {
 
+#ifdef INCLUDE_SHASTA_SUPPORT
+	(void)reset_type;
+	chdrv_soft_reset(dev_ptr);  // Shasta doesn't have hard reset
+#elif defined(INCLUDE_WHITNEY_SUPPORT)
 	if (reset_type == CH_RESET_HARD) {
-		chdrv_group_hard_reset(dev_ptr->group);  // TODO need single device hard reset
-	} else {
+		chdrv_group_hard_reset(dev_ptr->group);  // Whitney can only do group hard reset
+	} else if (reset_type == CH_RESET_SOFT) {
 		chdrv_soft_reset(dev_ptr);
 	}
+#endif
 }
 
 void ch_group_reset(ch_group_t *grp_ptr, ch_reset_t reset_type) {
@@ -255,10 +273,10 @@ uint8_t ch_log_init(ch_group_t *grp_ptr, ch_log_fmt_t format, ch_log_cfg_t *conf
 	uint8_t start_sample_no_decim;
 
 	if (format == CH_LOG_FMT_REDSWALLOW) {
-		printf("# TDK InvenSense Embedded Redswallow Log\r\n");
-		printf("# sample rate: %0.2f S/s\r\n", (float)1000.0f / config_ptr->interval_ms);
-		printf("# Decimation factor: %u\r\n", config_ptr->decimation_factor);
-		printf("# Content: %s\r\n", config_ptr->output_type == CH_OUTPUT_IQ ? "iq" : "amp");
+		ch_log_printf("# TDK InvenSense Embedded Redswallow Log\r\n");
+		ch_log_printf("# sample rate: %0.2f S/s\r\n", 1000.0f / config_ptr->interval_ms);
+		ch_log_printf("# Decimation factor: %u\r\n", config_ptr->decimation_factor);
+		ch_log_printf("# Content: %s\r\n", config_ptr->output_type == CH_OUTPUT_IQ ? "iq" : "amp");
 
 		for (uint8_t dev_num = 0; dev_num < ch_get_num_ports(grp_ptr); dev_num++) {
 			ch_dev_t *dev_ptr = ch_get_dev_ptr(grp_ptr, dev_num);
@@ -272,24 +290,25 @@ uint8_t ch_log_init(ch_group_t *grp_ptr, ch_log_fmt_t format, ch_log_cfg_t *conf
 					num_samples_no_decim  = dev_ptr->num_rx_samples * config_ptr->decimation_factor;
 					start_sample_no_decim = config_ptr->start_sample * config_ptr->decimation_factor;
 				}
-				printf("# Sensors ID: %u\r\n", dev_num);
-				printf("# Sensors FOP: %lu Hz\r\n", dev_ptr->op_frequency);
-				printf("# Sensors NB Samples: %u\r\n", num_samples_no_decim);
-				printf("# Sensors NB First samples skipped: %u\r\n", start_sample_no_decim);
-				printf("# header, log ID, time [s], tx_id, rx_id, range [cm], intensity [a.u.], target_detected, "
-				       "insertionAnnotation");
+				ch_log_printf("# Sensors ID: %u\r\n", dev_num);
+				ch_log_printf("# Sensors FOP: %lu Hz\r\n", dev_ptr->op_frequency);
+				ch_log_printf("# Sensors NB Samples: %u\r\n", num_samples_no_decim);
+				ch_log_printf("# Sensors NB First samples skipped: %u\r\n", start_sample_no_decim);
+				ch_log_printf(
+						"# header, log ID, time [s], tx_id, rx_id, range [cm], intensity [a.u.], target_detected, "
+						"insertionAnnotation");
 
 				for (int count  = start_sample_no_decim; count < num_samples_no_decim;
 				     count     += config_ptr->decimation_factor) {
 					float sample_cm = (float)dev_ptr->max_range * (count + 1) / (num_samples_no_decim * 10.0);
-					printf(", idata_%0.1f", sample_cm);
+					ch_log_printf(", idata_%0.1f", sample_cm);
 				}
 				for (int count  = start_sample_no_decim; count < num_samples_no_decim;
 				     count     += config_ptr->decimation_factor) {
 					float sample_cm = (float)dev_ptr->max_range * (count + 1) / (num_samples_no_decim * 10.0);
-					printf(", qdata_%0.1f", sample_cm);
+					ch_log_printf(", qdata_%0.1f", sample_cm);
 				}
-				printf("\r\n");
+				ch_log_printf("\r\n");
 			}
 		}
 	}
@@ -298,11 +317,12 @@ uint8_t ch_log_init(ch_group_t *grp_ptr, ch_log_fmt_t format, ch_log_cfg_t *conf
 
 void ch_log_append(uint8_t log_id, ch_log_fmt_t format, uint64_t timestamp, ch_log_data_t *log_data_ptr) {
 	if (format == CH_LOG_FMT_REDSWALLOW) {
-		int16_t q_data[CH201_MAX_NUM_SAMPLES];
+		int16_t q_data[MAX_NUM_SAMPLES];
 
-		printf("chlog, %d, %0.6f, %u, %u, %0.1f, %u, %u, %u", log_id, (float)timestamp / 1000000.0f,
-		       log_data_ptr->tx_sensor_id, log_data_ptr->rx_sensor_id, (float)log_data_ptr->range / (32.0f * 10.0f),
-		       log_data_ptr->amplitude, log_data_ptr->range != CH_NO_TARGET, log_data_ptr->annotation);
+		ch_log_printf("chlog, %d, %0.6f, %u, %u, %0.1f, %u, %u, %u", log_id, (float)timestamp / 1000000.0f,
+		              log_data_ptr->tx_sensor_id, log_data_ptr->rx_sensor_id,
+		              (float)log_data_ptr->range / (32.0f * 10.0f), log_data_ptr->amplitude,
+		              log_data_ptr->range != CH_NO_TARGET, log_data_ptr->annotation);
 
 		/* Print first all I data then all Q data
 		 * If printing magnitude, print mag data in place of I data and 0 in place of Q data
@@ -310,21 +330,21 @@ void ch_log_append(uint8_t log_id, ch_log_fmt_t format, uint64_t timestamp, ch_l
 		for (int count = 0; count < log_data_ptr->num_samples; count++) {
 			if (log_data_ptr->output_type == CH_OUTPUT_IQ) {
 				/* print I data now */
-				printf(", %d", log_data_ptr->raw_data.iq_sample_ptr->i);
+				ch_log_printf(", %d", log_data_ptr->raw_data.iq_sample_ptr->i);
 				/* save Q data to be print after */
 				q_data[count] = log_data_ptr->raw_data.iq_sample_ptr->q;
 				log_data_ptr->raw_data.iq_sample_ptr++;
 			} else {
-				printf(", %u", *(log_data_ptr->raw_data.mag_data_ptr));
+				ch_log_printf(", %u", *(log_data_ptr->raw_data.mag_data_ptr));
 				q_data[count] = 0;
 				log_data_ptr->raw_data.mag_data_ptr++;
 			}
 		}
 		/* Q data */
 		for (int count = 0; count < log_data_ptr->num_samples; count++) {
-			printf(", %d", q_data[count]);
+			ch_log_printf(", %d", q_data[count]);
 		}
-		printf("\r\n");
+		ch_log_printf("\r\n");
 	}
 }
 
@@ -365,8 +385,8 @@ uint32_t ch_get_freerun_interval_us(ch_dev_t *dev_ptr) {
 	return interval_us;
 }
 
-uint32_t ch_get_freerun_interval_ticks(ch_dev_t *dev_ptr) {
-	uint32_t rtc_ticks = 0;
+uint16_t ch_get_freerun_interval_ticks(ch_dev_t *dev_ptr) {
+	uint16_t rtc_ticks = 0;
 
 	if (dev_ptr->mode == CH_MODE_FREERUN) {
 		rtc_ticks = ch_usec_to_ticks(dev_ptr, dev_ptr->freerun_intvl_us);
@@ -427,14 +447,7 @@ uint16_t ch_get_max_range(ch_dev_t *dev_ptr) {
 }
 
 uint8_t ch_set_max_range(ch_dev_t *dev_ptr, uint16_t max_range) {
-	uint8_t ret_val                  = RET_ERR;
-	ch_set_max_range_func_t func_ptr = dev_ptr->current_fw->api_funcs->set_max_range;
-
-	if (func_ptr != NULL) {
-		ret_val = (*func_ptr)(dev_ptr, max_range);
-	}
-
-	return ret_val;
+	return ch_common_set_max_range(dev_ptr, max_range);
 }
 
 uint16_t ch_get_max_samples(ch_dev_t *dev_ptr) {
@@ -581,14 +594,7 @@ uint8_t ch_get_iq_data(ch_dev_t *dev_ptr, ch_iq_sample_t *buf_ptr, uint16_t star
 }
 
 uint16_t ch_samples_to_mm(ch_dev_t *dev_ptr, uint16_t num_samples) {
-	int num_mm                       = 0;
-	ch_samples_to_mm_func_t func_ptr = dev_ptr->current_fw->api_funcs->samples_to_mm;
-
-	if (func_ptr != NULL) {
-		num_mm = (*func_ptr)(dev_ptr, num_samples);
-	}
-
-	return num_mm;
+	return ch_common_samples_to_mm(dev_ptr, num_samples);
 }
 
 uint16_t ch_mm_to_samples(ch_dev_t *dev_ptr, uint16_t num_mm) {
@@ -725,6 +731,16 @@ uint8_t ch_get_target_int_counter(ch_dev_t *dev_ptr, uint8_t *meas_hist_ptr, uin
 	return ret_val;
 }
 
+ch_meas_status_t ch_meas_get_status(ch_dev_t *dev_ptr, uint8_t meas_num) {
+	ch_meas_status_t status            = CH_MEAS_STATUS_UNKNOWN;
+	ch_meas_get_status_func_t func_ptr = dev_ptr->current_fw->api_funcs->meas_get_status;
+
+	if (func_ptr != NULL) {
+		status = (*func_ptr)(dev_ptr, meas_num);
+	}
+	return status;
+}
+
 #ifdef INCLUDE_SHASTA_SUPPORT
 uint8_t ch_set_interrupt_mode(ch_dev_t *dev_ptr, ch_interrupt_mode_t mode) {
 
@@ -793,17 +809,6 @@ uint16_t ch_get_tx_length(ch_dev_t *dev_ptr) {
 	return tx_length;
 }
 
-uint8_t ch_get_rx_pulse_length(ch_dev_t *dev_ptr) {
-	uint8_t rx_pulse_length                = 0;
-	ch_get_rx_pulse_length_func_t func_ptr = dev_ptr->current_fw->api_funcs->get_rx_pulse_length;
-
-	if (func_ptr != NULL) {
-		rx_pulse_length = (*func_ptr)(dev_ptr);
-	}
-
-	return rx_pulse_length;
-}
-
 void ch_set_rx_pretrigger(ch_group_t *grp_ptr, uint8_t enable) {
 
 	if (enable) {
@@ -857,41 +862,6 @@ uint8_t ch_set_data_output(ch_dev_t *dev_ptr, ch_output_t *output_ptr) {
 	return ret_val;
 }
 
-#ifdef INCLUDE_SHASTA_SUPPORT
-uint8_t ch_meas_init_queue(ch_dev_t *dev_ptr) {
-
-	return ch_common_meas_init_queue(dev_ptr);
-}
-
-uint8_t ch_meas_reset(ch_dev_t *dev_ptr, uint8_t meas_num) {
-
-	return ch_common_meas_reset(dev_ptr, meas_num);
-}
-
-uint8_t ch_meas_init(ch_dev_t *dev_ptr, uint8_t meas_num, const ch_meas_config_t *meas_config_ptr,
-                     const void *thresh_ptr) {
-
-	/* GPT algo code has been took out of Soniclib base code
-	 * To don't break existing API, keep existing GPT parameter
-	 * but return an error if used
-	 */
-	if (thresh_ptr != NULL)
-		return RET_ERR;
-
-	return ch_common_meas_init(dev_ptr, meas_num, meas_config_ptr);
-}
-#endif
-
-ch_meas_status_t ch_meas_get_status(ch_dev_t *dev_ptr, uint8_t meas_num) {
-	ch_meas_status_t status            = CH_MEAS_STATUS_UNKNOWN;
-	ch_meas_get_status_func_t func_ptr = dev_ptr->current_fw->api_funcs->meas_get_status;
-
-	if (func_ptr != NULL) {
-		status = (*func_ptr)(dev_ptr, meas_num);
-	}
-	return status;
-}
-
 uint8_t ch_set_data_ready_delay(ch_dev_t *dev_ptr, uint8_t delay_ms) {
 	int ret_val                             = RET_ERR;
 	ch_set_data_ready_delay_func_t func_ptr = dev_ptr->current_fw->api_funcs->set_data_ready_delay;
@@ -915,6 +885,28 @@ uint8_t ch_get_data_ready_delay(ch_dev_t *dev_ptr) {
 }
 
 #ifdef INCLUDE_SHASTA_SUPPORT
+uint8_t ch_meas_init_queue(ch_dev_t *dev_ptr) {
+
+	return ch_common_meas_init_queue(dev_ptr);
+}
+
+uint8_t ch_meas_reset(ch_dev_t *dev_ptr, uint8_t meas_num) {
+
+	return ch_common_meas_reset(dev_ptr, meas_num);
+}
+
+uint8_t ch_meas_init(ch_dev_t *dev_ptr, uint8_t meas_num, const ch_meas_config_t *meas_config_ptr,
+                     const void *thresh_ptr) {
+
+	/* GPT algo code has been took out of Soniclib base code
+	 * To don't break existing API, keep existing GPT parameter
+	 * but return an error if used
+	 */
+	if (thresh_ptr != NULL)
+		return RET_ERR;
+
+	return ch_common_meas_init(dev_ptr, meas_num, meas_config_ptr);
+}
 
 const char *ch_get_sensor_id(ch_dev_t *dev_ptr) {
 
@@ -1236,12 +1228,12 @@ uint16_t ch_cycles_to_samples(uint32_t num_cycles, ch_odr_t odr) {
 	return ch_common_cycles_to_samples(num_cycles, odr);
 }
 
-uint32_t ch_usec_to_ticks(ch_dev_t *dev_ptr, uint32_t num_usec) {
+uint16_t ch_usec_to_ticks(ch_dev_t *dev_ptr, uint32_t num_usec) {
 
 	return ch_common_usec_to_ticks(dev_ptr, num_usec);
 }
 
-uint32_t ch_ticks_to_usec(ch_dev_t *dev_ptr, uint32_t num_ticks) {
+uint32_t ch_ticks_to_usec(ch_dev_t *dev_ptr, uint16_t num_ticks) {
 
 	return ch_common_ticks_to_usec(dev_ptr, num_ticks);
 }

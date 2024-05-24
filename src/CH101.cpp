@@ -17,14 +17,12 @@
  
  #include "CH101.h"
 
+uint8_t CH101::get_iq_data(int sensor_id, ch_iq_sample_t (&iq_data)[CH101_MAX_NUM_SAMPLES], uint16_t& nb_samples)
+{
+  CH101_dev* device = (CH101_dev*)get_device(sensor_id);
+  return device->get_iq_data(iq_data, nb_samples);
+}
 uint8_t CH101::get_iq_data(ch_iq_sample_t (&iq_data)[CH101_MAX_NUM_SAMPLES], uint16_t& nb_samples)
 {
-  nb_samples  = ch_get_num_samples(&chirp_device);
-
-  /* Reading I/Q data in normal, blocking mode */
-  uint8_t err = ch_get_iq_data(&chirp_device, iq_data, 0, nb_samples,
-                        CH_IO_MODE_BLOCK);
-  clear_data_ready();
-
-  return err;
+  return get_iq_data(0,iq_data, nb_samples);
 }
