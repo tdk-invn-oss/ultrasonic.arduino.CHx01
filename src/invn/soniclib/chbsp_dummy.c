@@ -165,25 +165,3 @@ __attribute__((weak)) int chbsp_spi_mem_read_nb(ch_dev_t *dev_ptr, uint16_t mem_
 	(void)(num_bytes);
 	return 1;
 }
-
-__attribute__((weak)) void chbsp_spi_cs_on(ch_dev_t *dev_ptr) {
-	(void)(dev_ptr);
-}
-
-__attribute__((weak)) void chbsp_spi_cs_off(ch_dev_t *dev_ptr) {
-	(void)(dev_ptr);
-}
-
-__attribute__((weak)) int chbsp_spi_write(ch_dev_t *dev_ptr, const uint8_t *data, uint16_t num_bytes) {
-	(void)(dev_ptr);
-	(void)(data);
-	(void)(num_bytes);
-	return 0;
-}
-
-__attribute__((weak)) int chbsp_spi_read(ch_dev_t *dev_ptr, uint8_t *data, uint16_t num_bytes) {
-	(void)(dev_ptr);
-	(void)(data);
-	(void)(num_bytes);
-	return 0;
-}

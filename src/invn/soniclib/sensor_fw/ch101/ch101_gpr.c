@@ -85,3 +85,35 @@ uint8_t ch101_gpr_init(ch_dev_t *dev_ptr, fw_info_t **fw_info) {
 
 	return 0;
 }
+
+uint8_t ch101_gpr_get_target_in_ringdown(ch_dev_t *dev_ptr) {
+	uint8_t in_ringdown = 0;
+
+	chdrv_read_byte(dev_ptr, CH101_GPR_REG_IN_RINGDOWN, &in_ringdown);
+
+	return in_ringdown;
+}
+
+uint16_t ch101_gpr_get_in_ringdown_ths(ch_dev_t *dev_ptr) {
+	uint16_t in_ringdown_ths = 0;
+
+	chdrv_read_word(dev_ptr, CH101_GPR_REG_IN_RINGDOWN_THS, &in_ringdown_ths);
+
+	return in_ringdown_ths;
+}
+
+void ch101_gpr_set_in_ringdown_ths(ch_dev_t *dev_ptr, uint16_t in_ringdown_ths) {
+	chdrv_write_word(dev_ptr, CH101_GPR_REG_IN_RINGDOWN_THS, in_ringdown_ths);
+}
+
+uint8_t ch101_gpr_get_in_ringdown_idx(ch_dev_t *dev_ptr) {
+	uint8_t in_ringdown_idx = 0;
+
+	chdrv_read_byte(dev_ptr, CH101_GPR_REG_IN_RINGDOWN_IDX, &in_ringdown_idx);
+
+	return in_ringdown_idx;
+}
+
+void ch101_gpr_set_in_ringdown_idx(ch_dev_t *dev_ptr, uint8_t in_ringdown_idx) {
+	chdrv_write_byte(dev_ptr, CH101_GPR_REG_IN_RINGDOWN_IDX, in_ringdown_idx);
+}

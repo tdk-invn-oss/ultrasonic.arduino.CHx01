@@ -27,57 +27,11 @@ extern "C" {
 
 #include <stdint.h>
 #include <invn/soniclib/soniclib.h>
-
-#ifdef INCLUDE_SHASTA_SUPPORT
-
-#include <invn/soniclib/sensor_fw/icu_gpt/icu_algo_format.h>
-#include <invn/soniclib/sensor_fw/icu_gpt/icu_shasta_algo_structs.h>
-#include <invn/soniclib/sensor_fw/icu_gpt/icu_rangefinder_interface.h>
-#include <invn/soniclib/sensor_fw/icu_gpt/shasta_gpt_interface.h>
-
-#endif
+#include <invn/soniclib/ch_rangefinder_types.h>
 
 // total number of thresholds
 #define CH101_COMMON_NUM_THRESHOLDS (6)
 #define CHX01_COMMON_NUM_THRESHOLDS (6)
-
-#ifdef INCLUDE_SHASTA_SUPPORT
-#define CH_NUM_THRESHOLDS (LEN_THRESH) /*!< Number of internal detection thresholds (Shasta). */
-#elif defined(INCLUDE_WHITNEY_SUPPORT)
-#define CH_NUM_THRESHOLDS (6) /*!< Number of internal detection thresholds (CH201 only). */
-#endif
-
-//! Multiple detection threshold structure.
-typedef struct {
-	ch_thresh_t threshold[CH_NUM_THRESHOLDS];
-} ch_thresholds_t;
-
-typedef uint8_t (*ch_set_threshold_func_t)(ch_dev_t *dev_ptr, uint8_t threshold_index, uint16_t amplitude);
-typedef uint16_t (*ch_get_threshold_func_t)(ch_dev_t *dev_ptr, uint8_t threshold_index);
-typedef uint8_t (*ch_set_thresholds_func_t)(ch_dev_t *dev_ptr, ch_thresholds_t *thresh_ptr);
-typedef uint8_t (*ch_get_thresholds_func_t)(ch_dev_t *dev_ptr, ch_thresholds_t *thresh_ptr);
-typedef uint8_t (*ch_set_static_range_func_t)(ch_dev_t *dev_ptr, uint16_t static_range);
-typedef uint8_t (*ch_set_rx_holdoff_func_t)(ch_dev_t *dev_ptr, uint16_t rx_holdoff);
-typedef uint16_t (*ch_get_rx_holdoff_func_t)(ch_dev_t *dev_ptr);
-typedef uint32_t (*ch_get_tof_us_func_t)(ch_dev_t *dev_ptr);
-
-typedef struct {
-	ch_set_threshold_func_t set_threshold;
-	ch_get_threshold_func_t get_threshold;
-	ch_set_thresholds_func_t set_thresholds;
-	ch_get_thresholds_func_t get_thresholds;
-	ch_set_static_range_func_t set_static_range;
-	ch_set_rx_holdoff_func_t set_rx_holdoff;
-	ch_get_rx_holdoff_func_t get_rx_holdoff;
-	ch_get_tof_us_func_t get_tof_us;
-} ch_rangefinder_api_funcs_t;
-
-//! Algorithm configuration
-typedef struct {
-	uint16_t static_range; /*!< static target rejection range, in mm (0 if unused) */
-	ch_thresholds_t
-			*thresh_ptr; /*!< ptr to detection thresholds structure (if supported), should be NULL (0) for CH101 */
-} ch_rangefinder_algo_config_t;
 
 uint8_t ch_rangefinder_get_algo_config(const ch_dev_t *dev_ptr, ch_rangefinder_algo_config_t *config_ptr);
 
@@ -133,7 +87,7 @@ uint32_t ch_get_tof_us(ch_dev_t *dev_ptr);
  * \a ch_samples_to_mm() function.
  *
  * For ICU sensors, this function always returns the value for the default measurement
- * definition.  To specify which measurement to query, use the \a ch_meas_get_static_filter()
+ * definition.  To specify which measurement to query, use the \a icu_gpt_get_static_filter()
  * function.
  *
  * See also \a ch_set_static_range().
@@ -160,7 +114,7 @@ uint16_t ch_get_static_range(const ch_dev_t *dev_ptr);
  * to filter over a certain physical distance, use the \a ch_mm_to_samples() function.
  *
  * For ICU sensors, this function always controls the default measurement definition.  To
- * specify which measurement to modify, use the \a ch_meas_set_static_filter() function.
+ * specify which measurement to modify, use the \a icu_gpt_set_static_filter() function.
  *
  * See also \a ch_get_static_range().
  */
@@ -253,6 +207,15 @@ uint16_t ch_get_target_amplitude(ch_dev_t *dev_ptr, uint8_t target_num);
  */
 uint32_t ch_get_target_tof_us(ch_dev_t *dev_ptr, uint8_t target_num);
 
+/**
+ * @brief      Return if a target is detected near sensor (in the ringdown)
+ *
+ * @param      dev_ptr  pointer to the ch_dev_t descriptor structure
+ *
+ * @return     1 if a target is detected, else 0
+ */
+uint8_t ch_is_target_in_ringdown(ch_dev_t *dev_ptr);
+
 /*!
  * \brief Get the detection threshold.
  *
@@ -311,7 +274,7 @@ uint8_t ch_set_threshold(ch_dev_t *dev_ptr, uint8_t threshold_index, uint16_t am
  *
  * For ICU sensors, this function only reports the thresholds for the default measurement
  * (CH_DEFAULT_MEAS_NUM).  If both measurements are being used, the thresholds for each
- * may be obtained individually by using the \a ch_meas_get_thresholds() function.
+ * may be obtained individually by using the \a icu_gpt_get_thresholds() function.
  *
  * See also \a ch_set_thresholds().
  *
@@ -347,7 +310,7 @@ uint8_t ch_get_thresholds(ch_dev_t *dev_ptr, ch_thresholds_t *thresh_ptr);
  *
  * For ICU sensors, this function only sets the thresholds for the default measurement
  * (CH_DEFAULT_MEAS_NUM).  If both measurements are being used, the thresholds for each
- * may be set individually by using the \a ch_meas_set_thresholds() function.
+ * may be set individually by using the \a icu_gpt_set_thresholds() function.
  *
  * See also \a ch_get_thresholds().
  *

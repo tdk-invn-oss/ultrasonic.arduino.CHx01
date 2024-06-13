@@ -34,24 +34,30 @@ static void sensor_int_callback(ch_group_t *grp_ptr, uint8_t dev_num,
 // CHx01 constructor: the group has an existing sensor object
 CHx01::CHx01(CHx01_dev* dev, int rst_id, bool rst_n)
 {
+  /* Initialize group descriptor */
+  ch_group_init(this, 1, 1, RTC_CAL_PULSE_MS);
+
   device[0] = dev;
-  num_ports = 1;
   chbsp_module_init(rst_id, rst_n);
 }
 
 CHx01::CHx01(CHx01_dev* dev0, CHx01_dev* dev1, int rst_id, bool rst_n)
 {
+  /* Initialize group descriptor */
+  ch_group_init(this, 1, 2, RTC_CAL_PULSE_MS);
+
   device[0] = dev0;
   device[1] = dev1;
-  num_ports = 2;
   chbsp_module_init(rst_id, rst_n);
 }
 
 CHx01::CHx01(CHx01_dev& dev0, CHx01_dev& dev1, int rst_id, bool rst_n)
 {
+  /* Initialize group descriptor */
+  ch_group_init(this, 1, 2, RTC_CAL_PULSE_MS);
+
   device[0] = &dev0;
   device[1] = &dev1;
-  num_ports = 2;
   chbsp_module_init(rst_id, rst_n);
 }
 
@@ -70,14 +76,11 @@ int CHx01::begin() {
 
   board_init(this);
 
-  /* Initialize group descriptor */
-  rc = ch_group_init(this, num_ports, 1 , RTC_CAL_PULSE_MS);
-
   for(int i= 0; i < num_ports; i++)
   {
     rc |= get_device(i)->begin((ch_group_t*)this,i);
   }
-  
+
   if (rc == 0) {
     rc = ch_group_start(this);
   }

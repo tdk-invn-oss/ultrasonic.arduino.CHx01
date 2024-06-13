@@ -111,10 +111,10 @@ extern "C" {
 
 /*==============  SonicLib Version Info ===================*/
 /* SonicLib API/Driver version */
-#define SONICLIB_VER_MAJOR  (4)    /*!< SonicLib major version. */
-#define SONICLIB_VER_MINOR  (0)    /*!< SonicLib minor version. */
-#define SONICLIB_VER_REV    (0)    /*!< SonicLib revision. */
-#define SONICLIB_VER_SUFFIX "rc.8" /*!< SonicLib version suffix (contains pre-release info) */
+#define SONICLIB_VER_MAJOR  (4) /*!< SonicLib major version. */
+#define SONICLIB_VER_MINOR  (2) /*!< SonicLib minor version. */
+#define SONICLIB_VER_REV    (1) /*!< SonicLib revision. */
+#define SONICLIB_VER_SUFFIX ""  /*!< SonicLib version suffix (contains pre-release info) */
 
 /***** DO NOT MODIFY ANY VALUES BEYOND THIS POINT! *****/
 
@@ -2401,7 +2401,7 @@ ch_interrupt_drive_t ch_get_interrupt_drive(ch_dev_t *dev_ptr);
  * To convert a physical distance into a sample count value to use here, use \a ch_mm_to_samples().
  *
  * For ICU sensors, this function always controls the default measurement definition.  To
- * specify which measurement to modify, use the \a ch_meas_set_rx_holdoff() function.
+ * specify which measurement to modify, use the \a icu_gpt_set_rx_holdoff() function.
  *
  * See also \a ch_get_rx_holdoff().
  */
@@ -2421,7 +2421,7 @@ uint8_t ch_set_rx_holdoff(ch_dev_t *dev_ptr, uint16_t num_samples);
  * To convert the returned sample count to a physical distance, use \a ch_samples_to_mm().
  *
  * For ICU sensors, this function always returns the value for the default measurement
- * definition.  To specify which measurement to query, use the \a ch_meas_get_rx_holdoff()
+ * definition.  To specify which measurement to query, use the \a icu_gpt_get_rx_holdoff()
  * function.
  *
  * See also \a ch_set_rx_holdoff().

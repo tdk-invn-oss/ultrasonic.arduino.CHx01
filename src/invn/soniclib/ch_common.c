@@ -95,6 +95,10 @@ uint8_t ch_common_init(ch_dev_t *dev_ptr, ch_group_t *grp_ptr, uint8_t dev_num, 
 		} else {
 			dev_ptr->current_fw = NULL;
 		}
+#ifdef INCLUDE_SHASTA_SUPPORT
+		/* By default there is no dedicated init fw */
+		dev_ptr->init_fw_info = NULL;
+#endif
 
 		/* Mark this group as pending initialization via ch_group_start() */
 		grp_ptr->status = CH_GROUP_STAT_INIT_PENDING;
