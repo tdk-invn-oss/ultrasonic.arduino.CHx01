@@ -44,7 +44,7 @@ CHx01::CHx01(CHx01_dev* dev, int rst_id, bool rst_n)
 CHx01::CHx01(CHx01_dev* dev0, CHx01_dev* dev1, int rst_id, bool rst_n)
 {
   /* Initialize group descriptor */
-  ch_group_init(this, 1, 2, RTC_CAL_PULSE_MS);
+  ch_group_init(this, 2, 1, RTC_CAL_PULSE_MS);
 
   device[0] = dev0;
   device[1] = dev1;
@@ -54,7 +54,7 @@ CHx01::CHx01(CHx01_dev* dev0, CHx01_dev* dev1, int rst_id, bool rst_n)
 CHx01::CHx01(CHx01_dev& dev0, CHx01_dev& dev1, int rst_id, bool rst_n)
 {
   /* Initialize group descriptor */
-  ch_group_init(this, 1, 2, RTC_CAL_PULSE_MS);
+  ch_group_init(this, 2, 1, RTC_CAL_PULSE_MS);
 
   device[0] = &dev0;
   device[1] = &dev1;

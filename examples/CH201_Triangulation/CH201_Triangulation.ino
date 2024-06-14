@@ -28,7 +28,7 @@ void setup() {
   Serial.begin(115200);
   while (!Serial) {}
 
-  Serial.println("CH101 Triangulation");
+  Serial.println("CH201 Triangulation");
 
   // Initializing the CHx01 device
   ret = CHx01.begin();
