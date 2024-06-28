@@ -281,3 +281,13 @@ This sketch initializes a CH201, and starts the Time-of-Flight in free run mode.
 This sketch initializes a group of two CH201 sensors, and starts the triangulation. It uses a distance of 105mm between sensors. For each sample, X and Y target coordinates are printed on the Serial monitor.
 
 ![Triangulation plot](doc/pictures/triangulation_plotter.jpg)
+
+# Additionnal Sketches
+
+**CH101_MicroROS_Publisher**
+
+This sketch initializes the CH101 device and the microROS Arduino environment to log target range sensor data. Sensor data is published in a Range structure. For more information, refer to MicroROS_README.md.
+
+**CH201_MicroROS_Publisher**
+
+This sketch initializes the CH201 device and the microROS Arduino environment to log target range sensor data. Sensor data is published in a Range structure. For more information, refer to MicroROS_README.md.

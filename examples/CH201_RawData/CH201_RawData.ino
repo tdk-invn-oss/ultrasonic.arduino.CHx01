@@ -57,11 +57,12 @@ void loop() {
   if (CHx01.data_ready()) {
     /* Get raw data from the sensor */
     CHx01.get_iq_data(raw_data, nb_samples);
-    Serial.println("CH201 Raw Data");
+    Serial.println("CH201 Raw Data (clear)");
     for (int count = 0; count < nb_samples; count++) {
       /* output one I/Q pair per line */
+      Serial.print("q=");
       Serial.print(raw_data[count].q);
-      Serial.print(",");
+      Serial.print(",i=");
       Serial.println(raw_data[count].i);
     }
   }
